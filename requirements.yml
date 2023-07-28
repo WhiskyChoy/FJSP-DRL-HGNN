@@ -1,0 +1,17 @@
+name: songwen
+channels:
+  - pytorch
+  - nvidia
+  - defaults
+dependencies:
+  - python=3.7.16
+  - pytorch=1.12.1
+  - pytorch-cuda=11.8
+  - pip:
+    - gym==0.18.0
+    - matplotlib==3.5.3
+    - openpyxl==3.1.2
+    - pandas==1.1.5
+    - pip==23.2.1
+    - pynvml==11.5.0
+    - visdom==0.1.8.9

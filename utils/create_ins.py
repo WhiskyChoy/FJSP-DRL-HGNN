@@ -1,5 +1,5 @@
 import json
-import gym
+import gym      # type: ignore
 import torch
 from env.case_generator import CaseGenerator
 
@@ -16,7 +16,7 @@ def main():
     env_paras = load_dict["env_paras"]
     env_paras["batch_size"] = batch_size
     env_paras["device"] = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    case = CaseGenerator(num_jobs, num_mas, opes_per_job_min, opes_per_job_max, flag_same_opes=False, flag_doc=True)
+    case = CaseGenerator(num_jobs, num_mas, opes_per_job_min, opes_per_job_max, use_outer_nums_ope=False, flag_doc=True)
     gym.make('fjsp-v0', case=case, env_paras=env_paras)  # Instances are created when the environment is initialized
 
 if __name__ == "__main__":

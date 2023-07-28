@@ -4,13 +4,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Categorical
-from graph.hgnn import GATedge, MLPsim
+from graph.hgnn import GATedge, MLPsim          # type: ignore
 from mlp import MLPCritic, MLPActor
+from typing import Dict, Any, List, Tuple
+from env.fjsp_env import EnvState
 
 
-class Memory:
+class Memory:   # to hold the record of multiple steps (in training)?
     def __init__(self):
-        self.states = []
+        self.states = []                # not used
         self.logprobs = []
         self.rewards = []
         self.is_terminals = []
@@ -29,7 +31,7 @@ class Memory:
         
         
     def clear_memory(self):
-        del self.states[:]
+        del self.states[:]              # not used
         del self.logprobs[:]
         del self.rewards[:]
         del self.is_terminals[:]
@@ -51,7 +53,7 @@ class MLPs(nn.Module):
     '''
     MLPs in operation node embedding
     '''
-    def __init__(self, W_sizes_ope, hidden_size_ope, out_size_ope, num_head, dropout):
+    def __init__(self, W_sizes_ope: List[int], hidden_size_ope: int, out_size_ope: int, num_head: int, dropout: float):
         '''
         The multi-head and dropout mechanisms are not actually used in the final experiment.
         :param W_sizes_ope: A list of the dimension of input vector for each type,
@@ -80,11 +82,15 @@ class MLPs(nn.Module):
             nn.Linear(self.hidden_size_ope, self.out_size_ope),
         )
 
-    def forward(self, ope_ma_adj_batch, ope_pre_adj_batch, ope_sub_adj_batch, batch_idxes, feats):
+    def forward(self, ope_ma_adj_batch: torch.Tensor,
+                      ope_pre_adj_batch: torch.Tensor,
+                      ope_sub_adj_batch: torch.Tensor,
+                      batch_idxes: torch.Tensor,
+                      feats: torch.Tensor):
         '''
         :param ope_ma_adj_batch: Adjacency matrix of operation and machine nodes
         :param ope_pre_adj_batch: Adjacency matrix of operation and pre-operation nodes
-        :param ope_sub_adj_batch: Adjacency matrix of operation and sub-operation nodes
+        :param ope_sub_adj_batch: Adjacency matrix of operation and sub-operation nodes # should be usc-operation
         :param batch_idxes: Uncompleted instances
         :param feats: Contains operation, machine and edge features
         '''
@@ -104,14 +110,14 @@ class MLPs(nn.Module):
         return mu_ij_prime
 
 class HGNNScheduler(nn.Module):
-    def __init__(self, model_paras):
+    def __init__(self, model_paras: Dict[str, Any]):
         super(HGNNScheduler, self).__init__()
         self.device = model_paras["device"]
-        self.in_size_ma = model_paras["in_size_ma"]  # Dimension of the raw feature vectors of machine nodes
-        self.out_size_ma = model_paras["out_size_ma"]  # Dimension of the embedding of machine nodes
-        self.in_size_ope = model_paras["in_size_ope"]  # Dimension of the raw feature vectors of operation nodes
-        self.out_size_ope = model_paras["out_size_ope"]  # Dimension of the embedding of operation nodes
-        self.hidden_size_ope = model_paras["hidden_size_ope"]  # Hidden dimensions of the MLPs
+        self.in_size_ma = model_paras["in_size_ma"]                 # Dimension of the raw feature vectors of machine nodes
+        self.out_size_ma = model_paras["out_size_ma"]               # Dimension of the embedding of machine nodes
+        self.in_size_ope = model_paras["in_size_ope"]               # Dimension of the raw feature vectors of operation nodes
+        self.out_size_ope = model_paras["out_size_ope"]             # Dimension of the embedding of operation nodes
+        self.hidden_size_ope = model_paras["hidden_size_ope"]       # Hidden dimensions of the MLPs
         self.actor_dim = model_paras["actor_in_dim"]  # Input dimension of actor
         self.critic_dim = model_paras["critic_in_dim"]  # Input dimension of critic
         self.n_latent_actor = model_paras["n_latent_actor"]  # Hidden dimensions of the actor
@@ -120,7 +126,7 @@ class HGNNScheduler(nn.Module):
         self.n_hidden_critic = model_paras["n_hidden_critic"]  # Number of layers in critic
         self.action_dim = model_paras["action_dim"]  # Output dimension of actor
 
-        # len() means of the number of HGNN iterations
+        # len(num_heads) means of the number of HGNN iterations
         # and the element means the number of heads of each HGNN (=1 in final experiment)
         self.num_heads = model_paras["num_heads"]
         self.dropout = model_paras["dropout"]
@@ -150,7 +156,7 @@ class HGNNScheduler(nn.Module):
         '''
         raise NotImplementedError
 
-    def feature_normalize(self, data):
+    def feature_normalize(self, data: torch.Tensor):
         return (data - torch.mean(data)) / ((data.std() + 1e-5))
 
     '''
@@ -158,13 +164,18 @@ class HGNNScheduler(nn.Module):
         raw_mas: shape: [len(batch_idxes), num_mas, in_size_ma]
         proc_time: shape: [len(batch_idxes), max(num_opes), num_mas]
     '''
-    def get_normalized(self, raw_opes, raw_mas, proc_time, batch_idxes, nums_opes, flag_sample=False, flag_train=False):
+    def get_normalized(self, raw_opes: torch.Tensor,
+                       raw_mas: torch.Tensor,
+                       proc_time: torch.Tensor,
+                       batch_idxes: torch.Tensor,
+                       nums_opes: torch.Tensor,
+                       flag_sample:bool=False, flag_train:bool=False):
         '''
         :param raw_opes: Raw feature vectors of operation nodes
         :param raw_mas: Raw feature vectors of machines nodes
         :param proc_time: Processing time
-        :param batch_idxes: Uncompleted instances
-        :param nums_opes: The number of operations for each instance
+        :param batch_idxes: Uncompleted instances (those completed will not be counted)
+        :param nums_opes: The number of operations for each instance (in the batch)
         :param flag_sample: Flag for DRL-S
         :param flag_train: Flag for training
         :return: Normalized feats, including operations, machines and edges
@@ -173,17 +184,17 @@ class HGNNScheduler(nn.Module):
 
         # There may be different operations for each instance, which cannot be normalized directly by the matrix
         if not flag_sample and not flag_train:
-            mean_opes = []
-            std_opes = []
+            mean_opes_lst = []
+            std_opes_lst = []
             for i in range(batch_size):
-                mean_opes.append(torch.mean(raw_opes[i, :nums_opes[i], :], dim=-2, keepdim=True))
-                std_opes.append(torch.std(raw_opes[i, :nums_opes[i], :], dim=-2, keepdim=True))
+                mean_opes_lst.append(torch.mean(raw_opes[i, :nums_opes[i], :], dim=-2, keepdim=True))   # type: ignore
+                std_opes_lst.append(torch.std(raw_opes[i, :nums_opes[i], :], dim=-2, keepdim=True))     # type: ignore
                 proc_idxes = torch.nonzero(proc_time[i])
                 proc_values = proc_time[i, proc_idxes[:, 0], proc_idxes[:, 1]]
                 proc_norm = self.feature_normalize(proc_values)
                 proc_time[i, proc_idxes[:, 0], proc_idxes[:, 1]] = proc_norm
-            mean_opes = torch.stack(mean_opes, dim=0)
-            std_opes = torch.stack(std_opes, dim=0)
+            mean_opes = torch.stack(mean_opes_lst, dim=0)
+            std_opes = torch.stack(std_opes_lst, dim=0)
             mean_mas = torch.mean(raw_mas, dim=-2, keepdim=True)
             std_mas = torch.std(raw_mas, dim=-2, keepdim=True)
             proc_time_norm = proc_time
@@ -197,9 +208,11 @@ class HGNNScheduler(nn.Module):
         return ((raw_opes - mean_opes) / (std_opes + 1e-5), (raw_mas - mean_mas) / (std_mas + 1e-5),
                 proc_time_norm)
 
-    def get_action_prob(self, state, memories, flag_sample=False, flag_train=False):
+    def get_action_prob(self, state: EnvState, memories: Memory, flag_sample=False, flag_train=False):
         '''
         Get the probability of selecting each action in decision-making
+
+        Note that the `memories` is only used during training
         '''
         # Uncompleted instances
         batch_idxes = state.batch_idxes
@@ -218,11 +231,11 @@ class HGNNScheduler(nn.Module):
         for i in range(len(self.num_heads)):
             # First Stage, machine node embedding
             # shape: [len(batch_idxes), num_mas, out_size_ma]
-            h_mas = self.get_machines[i](state.ope_ma_adj_batch, state.batch_idxes, features)
+            h_mas: torch.Tensor = self.get_machines[i](state.ope_ma_adj_batch, state.batch_idxes, features)
             features = (features[0], h_mas, features[2])
             # Second Stage, operation node embedding
             # shape: [len(batch_idxes), max(num_opes), out_size_ope]
-            h_opes = self.get_operations[i](state.ope_ma_adj_batch, state.ope_pre_adj_batch, state.ope_sub_adj_batch,
+            h_opes: torch.Tensor = self.get_operations[i](state.ope_ma_adj_batch, state.ope_pre_adj_batch, state.ope_sub_adj_batch,
                                             state.batch_idxes, features)
             features = (h_opes, features[1], features[2])
 
@@ -230,10 +243,10 @@ class HGNNScheduler(nn.Module):
         h_mas_pooled = h_mas.mean(dim=-2)  # shape: [len(batch_idxes), out_size_ma]
         # There may be different operations for each instance, which cannot be pooled directly by the matrix
         if not flag_sample and not flag_train:
-            h_opes_pooled = []
+            h_opes_pooled_lst = []
             for i in range(len(batch_idxes)):
-                h_opes_pooled.append(torch.mean(h_opes[i, :nums_opes[i], :], dim=-2))
-            h_opes_pooled = torch.stack(h_opes_pooled)  # shape: [len(batch_idxes), d]
+                h_opes_pooled_lst.append(torch.mean(h_opes[i, :nums_opes[i], :], dim=-2))       # type: ignore
+            h_opes_pooled = torch.stack(h_opes_pooled_lst)  # shape: [len(batch_idxes), d]
         else:
             h_opes_pooled = h_opes.mean(dim=-2)  # shape: [len(batch_idxes), out_size_ope]
 
@@ -289,7 +302,9 @@ class HGNNScheduler(nn.Module):
 
         return action_probs, ope_step_batch, h_pooled
 
-    def act(self, state, memories, dones, flag_sample=True, flag_train=True):
+    def act(self, state: EnvState, memories: Memory, flag_sample: bool=True, flag_train: bool=True):
+        # ↑ The `dones` is not used
+        # ↑ The `memories` is only used in training (in-place modification)
         # Get probability of actions and the id of the current operation (be waiting to be processed) of each job
         action_probs, ope_step_batch, _ = self.get_action_prob(state, memories, flag_sample, flag_train=flag_train)
 
@@ -308,22 +323,30 @@ class HGNNScheduler(nn.Module):
 
         # Store data in memory during training
         if flag_train == True:
-            # memories.states.append(copy.deepcopy(state))
+            # memories.states.append(copy.deepcopy(state))              # the `states` of `Memory` is not used
             memories.logprobs.append(dist.log_prob(action_indexes))
             memories.action_indexes.append(action_indexes)
 
         return torch.stack((opes, mas, jobs), dim=1).t()
 
-    def evaluate(self, ope_ma_adj, ope_pre_adj, ope_sub_adj, raw_opes, raw_mas, proc_time,
-                 jobs_gather, eligible, action_envs, flag_sample=False):
+    def evaluate(self, ope_ma_adj: torch.Tensor,
+                 ope_pre_adj: torch.Tensor,
+                 ope_sub_adj: torch.Tensor,
+                 raw_opes: torch.Tensor,
+                 raw_mas: torch.Tensor,
+                 proc_time: torch.Tensor,
+                 jobs_gather: torch.Tensor,
+                 eligible: torch.Tensor,
+                 action_envs: torch.Tensor,
+                 flag_sample=False)->Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         batch_idxes = torch.arange(0, ope_ma_adj.size(-3)).long()
         features = (raw_opes, raw_mas, proc_time)
 
         # L iterations of the HGNN
         for i in range(len(self.num_heads)):
-            h_mas = self.get_machines[i](ope_ma_adj, batch_idxes, features)
+            h_mas: torch.Tensor = self.get_machines[i](ope_ma_adj, batch_idxes, features)
             features = (features[0], h_mas, features[2])
-            h_opes = self.get_operations[i](ope_ma_adj, ope_pre_adj, ope_sub_adj, batch_idxes, features)
+            h_opes: torch.Tensor = self.get_operations[i](ope_ma_adj, ope_pre_adj, ope_sub_adj, batch_idxes, features)
             features = (h_opes, features[1], features[2])
 
         # Stacking and pooling
@@ -345,34 +368,44 @@ class HGNNScheduler(nn.Module):
 
         scores[~mask] = float('-inf')
         action_probs = F.softmax(scores, dim=1)
-        state_values = self.critic(h_pooled)
+        state_values: torch.Tensor = self.critic(h_pooled)
         dist = Categorical(action_probs.squeeze())
-        action_logprobs = dist.log_prob(action_envs)
-        dist_entropys = dist.entropy()
+        action_logprobs: torch.Tensor = dist.log_prob(action_envs)
+        dist_entropys: torch.Tensor = dist.entropy()
         return action_logprobs, state_values.squeeze().double(), dist_entropys
 
 class PPO:
-    def __init__(self, model_paras, train_paras, num_envs=None):
-        self.lr = train_paras["lr"]  # learning rate
-        self.betas = train_paras["betas"]  # default value for Adam
-        self.gamma = train_paras["gamma"]  # discount factor
-        self.eps_clip = train_paras["eps_clip"]  # clip ratio for PPO
-        self.K_epochs = train_paras["K_epochs"]  # Update policy for K epochs
-        self.A_coeff = train_paras["A_coeff"]  # coefficient for policy loss
-        self.vf_coeff = train_paras["vf_coeff"]  # coefficient for value loss
-        self.entropy_coeff = train_paras["entropy_coeff"]  # coefficient for entropy term
-        self.num_envs = num_envs  # Number of parallel instances
-        self.device = model_paras["device"]  # PyTorch device
+    '''
+    The PPO class is the wrapper for the PPO algorithm;
+    it provides the function for one-step update
+    '''
+    def __init__(self, model_paras: Dict[str, Any], train_paras: Dict[str, Any], num_envs: int=1):  # original `num_envs: int=None`, could have some problem
+        self.lr: float = train_paras["lr"]                                  # learning rate
+        self.betas: Tuple[float, float] = train_paras["betas"]              # default value for Adam, (b1, b2); actually List[float] as input
+        self.gamma: float = train_paras["gamma"]                            # discount factor
+        self.eps_clip: float = train_paras["eps_clip"]                      # clip ratio for PPO
+        self.K_epochs: int = train_paras["K_epochs"]                        # Update policy for K epochs
+        
+        # coeff for loss
+        self.A_coeff: float = train_paras["A_coeff"]                        # coefficient for policy loss
+        self.vf_coeff: float = train_paras["vf_coeff"]                      # coefficient for value loss
+        self.entropy_coeff: float = train_paras["entropy_coeff"]            # coefficient for entropy term
+
+        self.num_envs = num_envs                                            # Number of parallel instances
+        self.device: str = model_paras["device"]                            # PyTorch device
 
         self.policy = HGNNScheduler(model_paras).to(self.device)
-        self.policy_old = copy.deepcopy(self.policy)
-        self.policy_old.load_state_dict(self.policy.state_dict())
+        self.policy_old: HGNNScheduler = copy.deepcopy(self.policy)
+        self.policy_old.load_state_dict(self.policy.state_dict())           # why load_state_dict()? already using deepcopy
         self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=self.lr, betas=self.betas)
         self.MseLoss = nn.MSELoss()
 
-    def update(self, memory, env_paras, train_paras):
-        device = env_paras["device"]
-        minibatch_size = train_paras["minibatch_size"]  # batch size for updating
+    def update(self, memory: Memory, env_paras: Dict[str, Any], train_paras):
+        '''
+        Update the parameter via backpropagation
+        '''
+        device: str = env_paras["device"]                                   # why not use self.device?
+        minibatch_size: int = train_paras["minibatch_size"]                 # batch size for updating
 
         # Flatten the data in memory (in the dim of parallel instances and decision points)
         old_ope_ma_adj = torch.stack(memory.ope_ma_adj, dim=0).transpose(0,1).flatten(0,1)
@@ -390,23 +423,23 @@ class PPO:
 
         # Estimate and normalize the rewards
         rewards_envs = []
-        discounted_rewards = 0
+        discounted_rewards: torch.Tensor = torch.tensor(0.0).to(device)
         for i in range(self.num_envs):
-            rewards = []
+            rewards_lst: List[float] = []
             discounted_reward = 0
             for reward, is_terminal in zip(reversed(memory_rewards[i]), reversed(memory_is_terminals[i])):
                 if is_terminal:
                     discounted_rewards += discounted_reward
                     discounted_reward = 0
                 discounted_reward = reward + (self.gamma * discounted_reward)
-                rewards.insert(0, discounted_reward)
+                rewards_lst.insert(0, discounted_reward)
             discounted_rewards += discounted_reward
-            rewards = torch.tensor(rewards, dtype=torch.float64).to(device)
+            rewards = torch.tensor(rewards_lst, dtype=torch.float64).to(device)
             rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
             rewards_envs.append(rewards)
-        rewards_envs = torch.cat(rewards_envs)
+        rewards_envs_ts = torch.cat(rewards_envs)
 
-        loss_epochs = 0
+        loss_epochs: torch.Tensor = torch.tensor(0.0).to(device)
         full_batch_size = old_ope_ma_adj.size(0)
         num_complete_minibatches = math.floor(full_batch_size / minibatch_size)
         # Optimize policy for K epochs:
@@ -430,12 +463,12 @@ class PPO:
                                          old_action_envs[start_idx: end_idx])
 
                 ratios = torch.exp(logprobs - old_logprobs[i*minibatch_size:(i+1)*minibatch_size].detach())
-                advantages = rewards_envs[i*minibatch_size:(i+1)*minibatch_size] - state_values.detach()
+                advantages = rewards_envs_ts[i*minibatch_size:(i+1)*minibatch_size] - state_values.detach()
                 surr1 = ratios * advantages
                 surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
-                loss = - self.A_coeff * torch.min(surr1, surr2)\
-                       + self.vf_coeff * self.MseLoss(state_values, rewards_envs[i*minibatch_size:(i+1)*minibatch_size])\
-                       - self.entropy_coeff * dist_entropy
+                loss: torch.Tensor = - self.A_coeff * torch.min(surr1, surr2)\
+                                     + self.vf_coeff * self.MseLoss(state_values, rewards_envs_ts[i*minibatch_size:(i+1)*minibatch_size])\
+                                     - self.entropy_coeff * dist_entropy
                 loss_epochs += loss.mean().detach()
 
                 self.optimizer.zero_grad()

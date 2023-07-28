@@ -1,0 +1,42 @@
+###################### Testing ######################
+
+PyTorch device:  cuda
+
+loading checkpoint: save_10_5.pt
+rule: save_10_5.pt
+Create env[0]
+Shape of cal_cumul_adj_batch: torch.Size([1, 52, 52])
+Shape of batch_idxes: torch.Size([1])
+Shape of last_opes: torch.Size([1])
+Traceback (most recent call last):
+  File "e:/GitProjects/fjsp-drl/test.py", line 208, in <module>
+    main()
+  File "e:/GitProjects/fjsp-drl/test.py", line 159, in main
+    makespan, time_re = schedule(env, model, memories)
+  File "e:/GitProjects/fjsp-drl/test.py", line 195, in schedule
+    state, _, dones = env.step(actions)  # environment transit; second return: rewards, not used
+  File "e:\GitProjects\fjsp-drl\env\fjsp_env.py", line 249, in step
+    self.cal_cumul_adj_batch[self.batch_idxes, last_opes, :] = 0
+RuntimeError: linearIndex.numel()*sliceSize*nElemBefore == expandedValue.numel() INTERNAL ASSERT FAILED at "C:\\cb\\pytorch_1000000000000\\work\\aten\\src\\ATen\\native\\cuda\\Indexing.cu":327, please report a bug to PyTorch. number of flattened indices did not match number of elements in the value tensor: 52 vs 1
+
+fix: manual broadcasting
+
+###################### Training ######################
+PyTorch device:  cuda
+Setting up a new session...
+num_job:  10    num_mas:  5     num_opes:  47
+spend_time:  1.4883170127868652
+Traceback (most recent call last):
+  File "e:/GitProjects/fjsp-drl/train.py", line 188, in <module>
+    main()
+  File "e:/GitProjects/fjsp-drl/train.py", line 142, in main
+    loss, reward = model.update(memories, env_paras, train_paras)
+  File "e:\GitProjects\fjsp-drl\PPO_model.py", line 475, in update
+    loss.mean().backward()
+  File "D:\Anaconda\anaconda3\envs\songwen\lib\site-packages\torch\_tensor.py", line 396, in backward
+    torch.autograd.backward(self, gradient, retain_graph, create_graph, inputs=inputs)
+  File "D:\Anaconda\anaconda3\envs\songwen\lib\site-packages\torch\autograd\__init__.py", line 175, in backward
+    allow_unreachable=True, accumulate_grad=True)  # Calls into the C++ engine to run the backward pass
+RuntimeError: scatter_add_cuda_kernel does not have a deterministic implementation, but you set 'torch.use_deterministic_algorithms(True)'. You can turn off determinism just for this operation, or you can use the 'warn_only=True' option, if that's acceptable for your application. You can also file an issue at https://github.com/pytorch/pytorch/issues to help us prioritize adding deterministic support for this operation. 
+
+

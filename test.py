@@ -4,23 +4,41 @@ import os
 import random
 import time as time
 
-import gym
-import pandas as pd
+import gym                  # type: ignore
+import pandas as pd         # type: ignore
 import torch
 import numpy as np
 
-import pynvml
+import pynvml               # type: ignore
 import PPO_model
 from env.load_data import nums_detec
+from env.fjsp_env import FJSPEnv
+from typing import Dict, Any, List
+import os
+# from torch.backends.cudnn import set_flags
 
-def setup_seed(seed):
+def setup_seed(seed: int):
     torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     random.seed(seed)
-    torch.backends.cudnn.deterministic = True
+    if torch.cuda.is_available():
+        # set_flags(_deterministic=True)
+        torch.use_deterministic_algorithms(True)
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+        torch.cuda.manual_seed_all(seed)
 
 def main():
+    # Load config and init objects
+    with open("./config.json", 'r') as load_f:
+        load_dict: Dict[str, Dict[str, Any]] = json.load(load_f)
+    env_paras: Dict[str, Any] = load_dict["env_paras"]
+    model_paras: Dict[str, Any] = load_dict["model_paras"]
+    train_paras: Dict[str, Any] = load_dict["train_paras"]
+    test_paras: Dict[str, Any] = load_dict["test_paras"]
+
+    deterministic: bool = train_paras["deterministic"]
+    if deterministic:
+        setup_seed(3407)            # magic seed
     # PyTorch initialization
     # gpu_tracker = MemTracker()  # Used to monitor memory (of gpu)
     pynvml.nvmlInit()
@@ -34,13 +52,6 @@ def main():
     print("PyTorch device: ", device.type)
     torch.set_printoptions(precision=None, threshold=np.inf, edgeitems=None, linewidth=None, profile=None, sci_mode=False)
 
-    # Load config and init objects
-    with open("./config.json", 'r') as load_f:
-        load_dict = json.load(load_f)
-    env_paras = load_dict["env_paras"]
-    model_paras = load_dict["model_paras"]
-    train_paras = load_dict["train_paras"]
-    test_paras = load_dict["test_paras"]
     env_paras["device"] = device
     model_paras["device"] = device
     env_test_paras = copy.deepcopy(env_paras)
@@ -59,12 +70,12 @@ def main():
     mod_files = os.listdir('./model/')[:]
 
     memories = PPO_model.Memory()
-    model = PPO_model.PPO(model_paras, train_paras)
-    rules = test_paras["rules"]
+    model = PPO_model.PPO(model_paras, train_paras) # the `train_paras` is just for initializing the model structure
+    rules: List[str] = test_paras["rules"]
     envs = []  # Store multiple environments
 
     # Detect and add models to "rules"
-    if "DRL" in rules:
+    if "DRL" in rules:      # auto add all models
         for root, ds, fs in os.walk('./model/'):
             for f in fs:
                 if f.endswith('.pt'):
@@ -138,6 +149,7 @@ def main():
             # Schedule an instance/environment
             # DRL-S
             if test_paras["sample"]:
+                env.reset()
                 makespan, time_re = schedule(env, model, memories, flag_sample=test_paras["sample"])
                 makespans.append(torch.min(makespan))
                 times.append(time_re)
@@ -145,6 +157,7 @@ def main():
             else:
                 time_s = []
                 makespan_s = []  # In fact, the results obtained by DRL-G do not change
+                env.reset()
                 for j in range(test_paras["num_average"]):
                     makespan, time_re = schedule(env, model, memories)
                     makespan_s.append(makespan)
@@ -170,26 +183,27 @@ def main():
 
     print("total_spend_time: ", time.time() - start)
 
-def schedule(env, model, memories, flag_sample=False):
+def schedule(env: FJSPEnv, model: PPO_model.PPO, memories: PPO_model.Memory, flag_sample: bool = False):
     # Get state and completion signal
     state = env.state
-    dones = env.done_batch
+    # dones = env.done_batch
     done = False  # Unfinished at the beginning
     last_time = time.time()
     i = 0
-    while ~done:
+    # not torch.tensor(False) == False
+    while not done:  # ~False = -1, happened to be okay; but ~True = -2, which is not okay; later it's replace by torch.Tensor, which is okay
         i += 1
         with torch.no_grad():
-            actions = model.policy_old.act(state, memories, dones, flag_sample=flag_sample, flag_train=False)
-        state, rewards, dones = env.step(actions)  # environment transit
-        done = dones.all()
+            actions = model.policy_old.act(state, memories, flag_sample=flag_sample, flag_train=False)  # `dones` removed
+        state, _, dones = env.step(actions)  # environment transit; second return: rewards, not used
+        done = dones.all()  # type: ignore
     spend_time = time.time() - last_time  # The time taken to solve this environment (instance)
     # print("spend_time: ", spend_time)
 
     # Verify the solution
     gantt_result = env.validate_gantt()[0]
     if not gantt_result:
-        print("Scheduling Error！！！！！！")
+        print("Scheduling Error!!!!!!")
     return copy.deepcopy(env.makespan_batch), spend_time
 
 

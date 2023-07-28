@@ -1,15 +1,17 @@
 import sys
-import gym
+import gym      # type: ignore
 import torch
 
 from dataclasses import dataclass
 from env.load_data import load_fjs, nums_detec
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt             # type: ignore
+import matplotlib.patches as mpatches       # type: ignore
 import random
 import copy
-from utils.my_utils import read_json, write_json
+from utils.my_utils import read_json, write_json        # type: ignore
+from .case_generator import CaseGenerator
+from typing import Dict, Any, Union, List
 
 
 @dataclass
@@ -18,27 +20,36 @@ class EnvState:
     Class for the state of the environment
     '''
     # static
-    opes_appertain_batch: torch.Tensor = None
-    ope_pre_adj_batch: torch.Tensor = None
-    ope_sub_adj_batch: torch.Tensor = None
-    end_ope_biases_batch: torch.Tensor = None
-    nums_opes_batch: torch.Tensor = None
+    opes_appertain_batch: torch.Tensor = None           # type: ignore
+    ope_pre_adj_batch: torch.Tensor = None              # type: ignore
+    ope_sub_adj_batch: torch.Tensor = None              # type: ignore
+    end_ope_biases_batch: torch.Tensor = None           # type: ignore
+    nums_opes_batch: torch.Tensor = None                # type: ignore
 
     # dynamic
-    batch_idxes: torch.Tensor = None
-    feat_opes_batch: torch.Tensor = None
-    feat_mas_batch: torch.Tensor = None
-    proc_times_batch: torch.Tensor = None
-    ope_ma_adj_batch: torch.Tensor = None
-    time_batch:  torch.Tensor = None
+    batch_idxes: torch.Tensor = None                    # type: ignore
+    feat_opes_batch: torch.Tensor = None                # type: ignore
+    feat_mas_batch: torch.Tensor = None                 # type: ignore
+    proc_times_batch: torch.Tensor = None               # type: ignore
+    ope_ma_adj_batch: torch.Tensor = None               # type: ignore
 
-    mask_job_procing_batch: torch.Tensor = None
-    mask_job_finish_batch: torch.Tensor = None
-    mask_ma_procing_batch: torch.Tensor = None
-    ope_step_batch: torch.Tensor = None
+    mask_job_procing_batch: torch.Tensor = None         # type: ignore
+    mask_job_finish_batch: torch.Tensor = None          # type: ignore
+    mask_ma_procing_batch: torch.Tensor = None          # type: ignore
+    ope_step_batch: torch.Tensor = None                 # type: ignore
+    time_batch:  torch.Tensor = None                    # type: ignore
 
-    def update(self, batch_idxes, feat_opes_batch, feat_mas_batch, proc_times_batch, ope_ma_adj_batch,
-               mask_job_procing_batch, mask_job_finish_batch, mask_ma_procing_batch, ope_step_batch, time):
+    def update(self,
+               batch_idxes: torch.Tensor,
+               feat_opes_batch: torch.Tensor,
+               feat_mas_batch: torch.Tensor,
+               proc_times_batch: torch.Tensor,
+               ope_ma_adj_batch: torch.Tensor,
+               mask_job_procing_batch: torch.Tensor,
+               mask_job_finish_batch: torch.Tensor,
+               mask_ma_procing_batch: torch.Tensor,
+               ope_step_batch: torch.Tensor,
+               time_batch: torch.Tensor):
         self.batch_idxes = batch_idxes
         self.feat_opes_batch = feat_opes_batch
         self.feat_mas_batch = feat_mas_batch
@@ -49,9 +60,9 @@ class EnvState:
         self.mask_job_finish_batch = mask_job_finish_batch
         self.mask_ma_procing_batch = mask_ma_procing_batch
         self.ope_step_batch = ope_step_batch
-        self.time_batch = time
+        self.time_batch = time_batch
 
-def convert_feat_job_2_ope(feat_job_batch, opes_appertain_batch):
+def convert_feat_job_2_ope(feat_job_batch: torch.Tensor, opes_appertain_batch: torch.Tensor):
     '''
     Convert job features into operation features (such as dimension)
     '''
@@ -61,7 +72,7 @@ class FJSPEnv(gym.Env):
     '''
     FJSP environment
     '''
-    def __init__(self, case, env_paras, data_source='case'):
+    def __init__(self, case: Union[CaseGenerator, List[str]], env_paras: Dict[str, Any], data_source='case'):
         '''
         :param case: The instance generator or the addresses of the instances
         :param env_paras: A dictionary of parameters for the environment
@@ -78,12 +89,13 @@ class FJSPEnv(gym.Env):
         self.device = env_paras["device"]  # Computing device for PyTorch
         # load instance
         num_data = 8  # The amount of data extracted from instance
-        tensors = [[] for _ in range(num_data)]
+        tensors: List[List[torch.Tensor]] = [[] for _ in range(num_data)]
         self.num_opes = 0
-        lines = []
+        lines: List[List[str]] = []      # actually a list of list (i.e list of lines)
         if data_source=='case':  # Generate instances through generators
             for i in range(self.batch_size):
-                lines.append(case.get_case(i)[0])  # Generate an instance and save it
+                lines.append(case[i][0])                                      # type: ignore
+                # ↑ Generate an instance and save it, using case.get_case()
                 num_jobs, num_mas, num_opes = nums_detec(lines[i])
                 # Records the maximum number of operations in the parallel instances
                 self.num_opes = max(self.num_opes, num_opes)
@@ -231,7 +243,15 @@ class FJSPEnv(gym.Env):
                                                                         torch.ones(self.batch_idxes.size(0), dtype=torch.float),
                                                                         proc_times), dim=1)
         last_opes = torch.where(opes - 1 < self.num_ope_biases_batch[self.batch_idxes, jobs], self.num_opes - 1, opes - 1)
-        self.cal_cumul_adj_batch[self.batch_idxes, last_opes, :] = 0
+        # Determine the shape of the slice you're indexing
+        slice_shape = self.cal_cumul_adj_batch[self.batch_idxes, last_opes, :].shape
+        # Create a tensor of zeros with the same shape
+        zeros = torch.zeros(slice_shape, device=self.cal_cumul_adj_batch.device)
+        # print(f"Shape of cal_cumul_adj_batch: {self.cal_cumul_adj_batch.shape}")
+        # print(f"Shape of batch_idxes: {self.batch_idxes.shape}")
+        # print(f"Shape of last_opes: {last_opes.shape}")
+        self.cal_cumul_adj_batch[self.batch_idxes, last_opes, :] = zeros
+        # ↑ broadcasting doesn't work in deterministic mode, or we can just set self.cal_cumul_adj_batch[self.batch_idxes, last_opes, :] = 0
 
         # Update 'Number of unscheduled operations in the job'
         start_ope = self.num_ope_biases_batch[self.batch_idxes, jobs]
@@ -387,11 +407,15 @@ class FJSPEnv(gym.Env):
         self.done_batch = self.mask_job_finish_batch.all(dim=1)
         return self.state
 
-    def render(self, mode='human'):
+    def render(self, mode='draw'):
         '''
         Deprecated in the final experiment
         '''
-        if self.show_mode == 'draw':
+        if self.show_mode is None and mode is None:
+            mode = 'draw'
+        elif self.show_mode is not None and mode is None:
+            mode = self.show_mode
+        if mode == 'draw':
             num_jobs = self.num_jobs
             num_mas = self.num_mas
             print(sys.argv[0])

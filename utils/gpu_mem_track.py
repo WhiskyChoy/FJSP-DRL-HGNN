@@ -7,6 +7,7 @@ import inspect
 
 import torch
 import numpy as np
+from typing import Generator
 
 dtype_memory_size_dict = {
     torch.float64: 64/8,
@@ -54,7 +55,7 @@ class MemTracker(object):
         self.begin = True
         self.device = device
 
-    def get_tensors(self):
+    def get_tensors(self)->Generator[torch.Tensor, None, None]:
         for obj in gc.get_objects():
             try:
                 if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):

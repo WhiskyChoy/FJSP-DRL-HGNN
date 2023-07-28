@@ -5,13 +5,14 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-def modelsize(model, input, type_size=4):
+def model_size(model: nn.Module, input_val: torch.Tensor, type_size: int=4):
     para = sum([np.prod(list(p.size())) for p in model.parameters()])
     # print('Model {} : Number of params: {}'.format(model._get_name(), para))
     print('Model {} : params: {:4f}M'.format(model._get_name(), para * type_size / 1000 / 1000))
 
-    input_ = input.clone()
-    input_.requires_grad_(requires_grad=False)
+    input_ = input_val.clone()
+    # input_.requires_grad_(requires_grad=False)     # Deprecated in PyTorch 1.6.0?
+    input_.requires_grad_(mode=False)
 
     mods = list(model.modules())
     out_sizes = []
@@ -31,10 +32,10 @@ def modelsize(model, input, type_size=4):
         nums = np.prod(np.array(s))
         total_nums += nums
 
-    # print('Model {} : Number of intermedite variables without backward: {}'.format(model._get_name(), total_nums))
-    # print('Model {} : Number of intermedite variables with backward: {}'.format(model._get_name(), total_nums*2))
-    print('Model {} : intermedite variables: {:3f} M (without backward)'
+    # print('Model {} : Number of intermediate variables without backward: {}'.format(model._get_name(), total_nums))
+    # print('Model {} : Number of intermediate variables with backward: {}'.format(model._get_name(), total_nums*2))
+    print('Model {} : intermediate variables: {:3f} M (without backward)'
           .format(model._get_name(), total_nums * type_size / 1000 / 1000))
-    print('Model {} : intermedite variables: {:3f} M (with backward)'
+    print('Model {} : intermediate variables: {:3f} M (with backward)'
           .format(model._get_name(), total_nums * type_size*2 / 1000 / 1000))
 

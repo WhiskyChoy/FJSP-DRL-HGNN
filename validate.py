@@ -1,12 +1,14 @@
-import gym
-import env
+import gym                  # type: ignore
+# import env
 import PPO_model
 import torch
 import time
 import os
 import copy
+from env.fjsp_env import FJSPEnv
+from typing import Dict, Any
 
-def get_validate_env(env_paras):
+def get_validate_env(env_paras: Dict[str, Any]):
     '''
     Generate and return the validation environment from the validation set ()
     '''
@@ -17,7 +19,7 @@ def get_validate_env(env_paras):
     env = gym.make('fjsp-v0', case=valid_data_files, env_paras=env_paras, data_source='file')
     return env
 
-def validate(env_paras, env, model_policy):
+def validate(env_paras, env: FJSPEnv, model_policy: PPO_model.HGNNScheduler):
     '''
     Validate the policy during training, and the process is similar to test
     '''
@@ -27,15 +29,15 @@ def validate(env_paras, env, model_policy):
     print('There are {0} dev instances.'.format(batch_size))  # validation set is also called development set
     state = env.state
     done = False
-    dones = env.done_batch
+    # dones = env.done_batch
     while ~done:
         with torch.no_grad():
-            actions = model_policy.act(state, memory, dones, flag_sample=False, flag_train=False)
-        state, rewards, dones = env.step(actions)
-        done = dones.all()
+            actions = model_policy.act(state, memory, flag_sample=False, flag_train=False)       # `dones` removed
+        state, _, dones = env.step(actions)     # second return: rewards, not used
+        done = dones.all()  # type: ignore
     gantt_result = env.validate_gantt()[0]
     if not gantt_result:
-        print("Scheduling Error！！！！！！")
+        print("Scheduling Error!!!!!!")
     makespan = copy.deepcopy(env.makespan_batch.mean())
     makespan_batch = copy.deepcopy(env.makespan_batch)
     env.reset()

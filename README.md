@@ -1,15 +1,18 @@
 # fjsp-drl
+
+<!-- Credits: This is forked (or to be forked) from [https://github.com/songwenas12/fjsp-drl](https://github.com/songwenas12/fjsp-drl) with detailed comments and type hints. -->
+
 Implementation of the IEEE TII paper [Flexible Job Shop Scheduling via Graph Neural Network and Deep Reinforcement Learning](https://ieeexplore.ieee.org/document/9826438). *IEEE Transactions on Industrial Informatics*, 2022.
 
-```
+```bibTeX
 @ARTICLE{9826438,  
    author={Song, Wen and Chen, Xinyang and Li, Qiqiang and Cao, Zhiguang},  
    journal={IEEE Transactions on Industrial Informatics},   
    title={Flexible Job Shop Scheduling via Graph Neural Network and Deep Reinforcement Learning},   
-   year={2022},  
-   volume={},  
-   number={},  
-   pages={1-11},  
+   year={2023},  
+   volume={19},  
+   number={2},  
+   pages={1600-1610},  
    doi={10.1109/TII.2022.3189725}
  }
 ```
@@ -52,7 +55,7 @@ Note that disabling the ```validate_gantt()``` function in ```schedule()``` can 
 
 ### train
 
-```
+```shell
 python train.py
 ```
 
@@ -60,14 +63,14 @@ Note that there should be a validation set of the corresponding size in ```./dat
 
 ### test
 
-```
+```shell
 python test.py
 ```
+
 Note that there should be model files (```*.pt```) in ```./model```.
 
 ## Reference
 
-* https://github.com/zcaicaros/L2D
-* https://github.com/yd-kwon/MatNet
-* https://github.com/dmlc/dgl/tree/master/examples/pytorch/han
-
+* [https://github.com/zcaicaros/L2D](https://github.com/zcaicaros/L2D)
+* [https://github.com/yd-kwon/MatNet](https://github.com/yd-kwon/MatNet)
+* [https://github.com/dmlc/dgl/tree/master/examples/pytorch/han](https://github.com/dmlc/dgl/tree/master/examples/pytorch/han)

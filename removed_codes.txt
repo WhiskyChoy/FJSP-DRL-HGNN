@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-# from torch.nn import Identity     # used in residual connection, but deprecated in the latest version
+from torch.nn import Identity
 import torch.nn.functional as F
 from typing import Tuple
 
@@ -15,6 +15,7 @@ class GATedge(nn.Module):
                  feat_drop=0.,
                  attn_drop=0.,
                  negative_slope=0.2,
+                 residual=False,
                  activation=None):
         '''
         :param in_feats: tuple, input dimension of (operation node, machine node)
@@ -27,13 +28,16 @@ class GATedge(nn.Module):
         self._in_dst_feats = in_feats[1]
         self._out_feats = out_feats
 
-        self.fc_src = nn.Linear(
-            self._in_src_feats, out_feats * num_head, bias=False)
-        self.fc_dst = nn.Linear(
-            self._in_dst_feats, out_feats * num_head, bias=False)
-        self.fc_edge = nn.Linear(
-            1, out_feats * num_head, bias=False)
-
+        if isinstance(in_feats, tuple):
+            self.fc_src = nn.Linear(
+                self._in_src_feats, out_feats * num_head, bias=False)
+            self.fc_dst = nn.Linear(
+                self._in_dst_feats, out_feats * num_head, bias=False)
+            self.fc_edge = nn.Linear(
+                1, out_feats * num_head, bias=False)
+        else:
+            self.fc = nn.Linear(
+                self._in_src_feats, out_feats * num_head, bias=False)
         self.attn_l = nn.Parameter(torch.rand(size=(1, num_head, out_feats), dtype=torch.float))
         self.attn_r = nn.Parameter(torch.rand(size=(1, num_head, out_feats), dtype=torch.float))
         self.attn_e = nn.Parameter(torch.rand(size=(1, num_head, out_feats), dtype=torch.float))
@@ -41,27 +45,47 @@ class GATedge(nn.Module):
         self.attn_drop = nn.Dropout(attn_drop)
         self.leaky_relu = nn.LeakyReLU(negative_slope)
 
+        # Deprecated in final experiment
+        if residual:
+            if self._in_dst_feats != out_feats:
+                self.res_fc = nn.Linear(
+                    self._in_dst_feats, num_head * out_feats, bias=False)
+            else:
+                self.res_fc = Identity()    # type: ignore
+        else:
+            self.register_buffer('res_fc', None)
         self.reset_parameters()
         self.activation = activation
 
     def reset_parameters(self):
         gain = nn.init.calculate_gain('relu')
-        nn.init.xavier_normal_(self.fc_src.weight, gain=gain)
-        nn.init.xavier_normal_(self.fc_dst.weight, gain=gain)
-        nn.init.xavier_normal_(self.fc_edge.weight, gain=gain)
+        if hasattr(self, 'fc'):
+            nn.init.xavier_normal_(self.fc.weight, gain=gain)
+        else:
+            nn.init.xavier_normal_(self.fc_src.weight, gain=gain)
+            nn.init.xavier_normal_(self.fc_dst.weight, gain=gain)
+            nn.init.xavier_normal_(self.fc_edge.weight, gain=gain)
         nn.init.xavier_normal_(self.attn_l, gain=gain)
         nn.init.xavier_normal_(self.attn_r, gain=gain)
         nn.init.xavier_normal_(self.attn_e, gain=gain)
 
-    def forward(self, ope_ma_adj_batch: torch.Tensor, batch_idxes: torch.Tensor, feat: Tuple[torch.Tensor, torch.Tensor, torch.Tensor]):
+    def forward(self, ope_ma_adj_batch: torch.Tensor, batch_idxes: torch.Tensor, feat: torch.Tensor):
         # Two linear transformations are used for the machine nodes and operation nodes, respective
         # In linear transformation, an W^O (\in R^{d \times 7}) for \mu_{ijk} is equivalent to
         #   W^{O'} (\in R^{d \times 6}) and W^E (\in R^{d \times 1}) for the nodes and edges respectively
-        h_src = self.feat_drop(feat[0])
-        h_dst = self.feat_drop(feat[1])
-        feat_src: torch.Tensor = self.fc_src(h_src)
-        feat_dst: torch.Tensor = self.fc_dst(h_dst)
-        feat_edge: torch.Tensor = self.fc_edge(feat[2].unsqueeze(-1))
+        if isinstance(feat, tuple):
+            h_src = self.feat_drop(feat[0])
+            h_dst = self.feat_drop(feat[1])
+            if not hasattr(self, 'fc_src'):
+                self.fc_src, self.fc_dst = self.fc, self.fc
+            feat_src = self.fc_src(h_src)
+            feat_dst = self.fc_dst(h_dst)
+        else:
+            # Deprecated in final experiment
+            h_src = h_dst = self.feat_drop(feat)
+            feat_src = feat_dst = self.fc(h_src).view(
+                -1, self._num_heads, self._out_feats)
+        feat_edge = self.fc_edge(feat[2].unsqueeze(-1))
 
         # Calculate attention coefficients
         el = (feat_src * self.attn_l).sum(dim=-1).unsqueeze(-1)
@@ -78,7 +102,7 @@ class GATedge(nn.Module):
                                            ope_ma_adj_batch[batch_idxes].size(2), 1),
                                      dtype=torch.bool, fill_value=True)), dim=-3)
         e = torch.cat((eijk, ekk.unsqueeze(-3)), dim=-3)
-        e[~mask] = float('-inf')    # may use -torch.inf; here we have auto-cast
+        e[~mask] = float('-inf')
         alpha = F.softmax(e.squeeze(-1), dim=-2)
         alpha_ijk = alpha[..., :-1, :]
         alpha_kk = alpha[..., -1, :].unsqueeze(-2)
@@ -102,7 +126,8 @@ class MLPsim(nn.Module):        # MLP Simple Version?
                  num_head,
                  feat_drop=0.,
                  attn_drop=0.,
-                 negative_slope=0.2):
+                 negative_slope=0.2,
+                 residual=False):
         '''
         :param in_feats: Dimension of the input vectors of the MLPs
         :param out_feats: Dimension of the output (operation embedding) of the MLPs
@@ -125,6 +150,16 @@ class MLPsim(nn.Module):        # MLP Simple Version?
             nn.Linear(hidden_dim, self._out_feats),
         )
 
+        # Deprecated in final experiment
+        if residual:
+            if self._in_feats != out_feats:
+                self.res_fc = nn.Linear(
+                    self._in_feats, self._num_heads * out_feats, bias=False)
+            else:
+                self.res_fc = Identity()        # type: ignore
+        else:
+            self.register_buffer('res_fc', None)        # exclude the buffer for `res_fc` in the state_dict
+
     def forward(self, feat: torch.Tensor, adj: torch.Tensor):
         # MLP_{\theta_x}, where x = 1, 2, 3, 4
         # Note that message-passing should along the edge (according to the adjacency matrix)
@@ -132,3 +167,31 @@ class MLPsim(nn.Module):        # MLP Simple Version?
         b = torch.sum(a, dim=-2)
         c = self.project(b)
         return c
+
+
+    def act(self, state: EnvState, memories: Memory, dones: torch.Tensor, flag_sample: bool=True, flag_train: bool=True):
+        # ↑ The `dones` is not used
+        # ↑ The `memories` is only used in training
+        # Get probability of actions and the id of the current operation (be waiting to be processed) of each job
+        action_probs, ope_step_batch, _ = self.get_action_prob(state, memories, flag_sample, flag_train=flag_train)
+
+        # DRL-S, sampling actions following \pi
+        if flag_sample:
+            dist = Categorical(action_probs)
+            action_indexes = dist.sample()
+        # DRL-G, greedily picking actions with the maximum probability
+        else:
+            action_indexes = action_probs.argmax(dim=1)
+
+        # Calculate the machine, job and operation index based on the action index
+        mas = (action_indexes / state.mask_job_finish_batch.size(1)).long()
+        jobs = (action_indexes % state.mask_job_finish_batch.size(1)).long()
+        opes = ope_step_batch[state.batch_idxes, jobs]
+
+        # Store data in memory during training
+        if flag_train == True:
+            # memories.states.append(copy.deepcopy(state))              # the `states` of `Memory` is not used
+            memories.logprobs.append(dist.log_prob(action_indexes))
+            memories.action_indexes.append(action_indexes)
+
+        return torch.stack((opes, mas, jobs), dim=1).t()

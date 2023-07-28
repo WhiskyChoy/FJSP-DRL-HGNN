@@ -36,16 +36,20 @@
     "update_timestep": 1,
     "viz": true,
     "viz_name": "Paper_1005",
+    "background_viz": true,
+    "instant_viz_browser": true,
     "minibatch_size": 512,
-    "parallel_iter": 20
+    "parallel_iter": 20,
+    "deterministic": true
   },
   "test_paras": {
-    "num_ins": 100,
+    "num_ins": 5,
     "rules": ["DRL"],
     "sample": false,
     "num_sample": 100,
     "num_average": 10,
     "public_ins": true,
-    "data_path": "1005"
+    "data_path": "1005",
+    "deterministic": true
   }
 }

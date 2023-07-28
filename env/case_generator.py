@@ -1,40 +1,49 @@
 import random
-import time
+# import time
 
 
 class CaseGenerator:
     '''
-    FJSP instance generator
+    Random FJSP instance generator
     '''
-    def __init__(self, job_init, num_mas, opes_per_job_min, opes_per_job_max, nums_ope=None, path='../data/',
-                 flag_same_opes=True, flag_doc=False):
+    def __init__(self, job_init: int, num_mas: int, opes_per_job_min: int, opes_per_job_max: int, nums_ope=None, path='../data/',
+                 use_outer_nums_ope: bool=True, flag_doc: bool=False):
         if nums_ope is None:
             nums_ope = []
-        self.flag_doc = flag_doc  # Whether save the instance to a file
-        self.flag_same_opes = flag_same_opes
-        self.nums_ope = nums_ope
-        self.path = path  # Instance save path (relative path)
-        self.job_init = job_init
-        self.num_mas = num_mas
+        self.flag_doc = flag_doc                        # Whether save the instance to a file
+        self.use_outer_nums_ope = use_outer_nums_ope    # Whether to use the outer nums_ope (the original argument is called "flag_same_opes",
+                                                        # but it is not used in the original code, so it is renamed to "use_outer_nums_ope")
+        self.nums_ope = nums_ope                        # The number of operations for each job (if use_outer_nums_ope is True)
+        self.path = path                                # Instance save path (relative path)
+        self.job_init = job_init                        # The number of jobs in the problem setting
+        self.num_mas = num_mas                          # The number of machines in the problem setting
 
-        self.mas_per_ope_min = 1  # The minimum number of machines that can process an operation
-        self.mas_per_ope_max = num_mas
-        self.opes_per_job_min = opes_per_job_min  # The minimum number of operations for a job
-        self.opes_per_job_max = opes_per_job_max
-        self.proctime_per_ope_min = 1  # Minimum average processing time
-        self.proctime_per_ope_max = 20
-        self.proctime_dev = 0.2
+        # ↓ |\bar{M}_{ij}|
+        self.mas_per_ope_min = 1                        # The minimum number of machines that can process an operation
+        self.mas_per_ope_max = num_mas                  # The maximum number of machines that can process an operation
+
+        # ↓ \bar{n}_{i}
+        self.opes_per_job_min = opes_per_job_min        # The minimum number of operations for a job
+        self.opes_per_job_max = opes_per_job_max        # The maximum number of operations for a job
+
+        # ↓ \bar{p}_{ij}
+        self.proctime_per_ope_min = 1                   # Minimum average processing time
+                                                        # ↑ (getting the random average first, and then getting the random processing time
+                                                        #    of each [operation] according to the deviation)
+        self.proctime_per_ope_max = 20                  # Maximum average processing time
+        self.proctime_dev = 0.2                         # The deviation of the processing time (not mentioned in the paper)
 
     def get_case(self, idx=0):
         '''
         Generate FJSP instance
-        :param idx: The instance number
+        :param idx: The instance number (only used in file naming)
         '''
-        self.num_jobs = self.job_init
-        if not self.flag_same_opes:
+        self.num_jobs = self.job_init                   # This write back is weird, as it can be done in the __init__ function
+        if not self.use_outer_nums_ope:
             self.nums_ope = [random.randint(self.opes_per_job_min, self.opes_per_job_max) for _ in range(self.num_jobs)]
         self.num_opes = sum(self.nums_ope)
         self.nums_option = [random.randint(self.mas_per_ope_min, self.mas_per_ope_max) for _ in range(self.num_opes)]
+        # ↑ the number of machines that can process each operation
         self.num_options = sum(self.nums_option)
         self.ope_ma = []
         for val in self.nums_option:
@@ -93,4 +102,10 @@ class CaseGenerator:
             for i in range(len(lines_doc)):
                 print(lines_doc[i], file=doc)
             doc.close()
-        return lines, self.num_jobs, self.num_jobs
+        return lines, self.num_jobs, self.num_jobs      # have no idea why returning `self.num_jobs` twice
+
+    def __getitem__(self, idx=0):
+        '''
+        This method is added, so that the class could be called using the [] operator
+        '''
+        return self.get_case(idx)

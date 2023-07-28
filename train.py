@@ -5,8 +5,8 @@ import random
 import time
 from collections import deque
 
-import gym
-import pandas as pd
+import gym                  # type: ignore
+import pandas as pd         # type: ignore
 import torch
 import numpy as np
 from visdom import Visdom
@@ -14,16 +14,33 @@ from visdom import Visdom
 import PPO_model
 from env.case_generator import CaseGenerator
 from validate import validate, get_validate_env
+from typing import Dict, Any
+from env.fjsp_env import FJSPEnv
+import subprocess
+# from torch.backends.cudnn import set_flags
 
-
-def setup_seed(seed):
+def setup_seed(seed: int):
     torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     random.seed(seed)
-    torch.backends.cudnn.deterministic = True
+    if torch.cuda.is_available():
+        # set_flags(_deterministic=True)
+        torch.use_deterministic_algorithms(True, warn_only=True)    # ` scatter_add_cuda_kernel` does not have a deterministic implementation, so we set `warn_only=True`
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+        torch.cuda.manual_seed_all(seed)
 
 def main():
+    # Load config and init objects
+    with open("./config.json", 'r') as load_f:
+        load_dict: Dict[str, Dict[str, Any]] = json.load(load_f)
+    
+    env_paras: Dict[str, Any] = load_dict["env_paras"]
+    model_paras: Dict[str, Any] = load_dict["model_paras"]
+    train_paras: Dict[str, Any] = load_dict["train_paras"]
+
+    deterministic: bool = train_paras["deterministic"]
+    if deterministic:
+        setup_seed(3407)            # magic seed
     # PyTorch initialization
     # gpu_tracker = MemTracker()  # Used to monitor memory (of gpu)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -35,12 +52,6 @@ def main():
     print("PyTorch device: ", device.type)
     torch.set_printoptions(precision=None, threshold=np.inf, edgeitems=None, linewidth=None, profile=None, sci_mode=False)
 
-    # Load config and init objects
-    with open("./config.json", 'r') as load_f:
-        load_dict = json.load(load_f)
-    env_paras = load_dict["env_paras"]
-    model_paras = load_dict["model_paras"]
-    train_paras = load_dict["train_paras"]
     env_paras["device"] = device
     model_paras["device"] = device
     env_valid_paras = copy.deepcopy(env_paras)
@@ -48,21 +59,31 @@ def main():
     model_paras["actor_in_dim"] = model_paras["out_size_ma"] * 2 + model_paras["out_size_ope"] * 2
     model_paras["critic_in_dim"] = model_paras["out_size_ma"] + model_paras["out_size_ope"]
 
-    num_jobs = env_paras["num_jobs"]
-    num_mas = env_paras["num_mas"]
-    opes_per_job_min = int(num_mas * 0.8)
-    opes_per_job_max = int(num_mas * 1.2)
+    num_jobs: int = env_paras["num_jobs"]
+    num_mas: int = env_paras["num_mas"]
+    opes_per_job_min: int = int(num_mas * 0.8)
+    opes_per_job_max: int = int(num_mas * 1.2)
 
     memories = PPO_model.Memory()
     model = PPO_model.PPO(model_paras, train_paras, num_envs=env_paras["batch_size"])
-    env_valid = get_validate_env(env_valid_paras)  # Create an environment for validation
-    maxlen = 1  # Save the best model
+    env_valid = get_validate_env(env_valid_paras)   # Create an environment for validation
+    maxlen = 1                                      # Save the best model (Top-maxlen models)
     best_models = deque()
     makespan_best = float('inf')
 
     # Use visdom to visualize the training process
-    is_viz = train_paras["viz"]
+    is_viz: bool = train_paras["viz"]
     if is_viz:
+        # os.system('python -m visdom.server')
+        # Importing required module
+        # Using system() method to execute shell commands
+        background_viz: bool = train_paras["background_viz"]
+        if background_viz:
+            subprocess.Popen('python -m visdom.server', stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)      # subprocess.call is blocking
+        instant_viz_browser: bool = train_paras["instant_viz_browser"]
+        if instant_viz_browser:
+            subprocess.Popen('python -m webbrowser http://localhost:8097', stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # actually output to stderr↑
         viz = Visdom(env=train_paras["viz_name"])
 
     # Generate data files and fill in the header
@@ -86,7 +107,7 @@ def main():
 
     # Start training iteration
     start_time = time.time()
-    env = None
+    env: FJSPEnv = None         # type: ignore
     for i in range(1, train_paras["max_iterations"]+1):
         # Replace training instances every x iteration (x = 20 in paper)
         if (i - 1) % train_paras["parallel_iter"] == 0:
@@ -99,13 +120,13 @@ def main():
         # Get state and completion signal
         state = env.state
         done = False
-        dones = env.done_batch
+        # dones = env.done_batch
         last_time = time.time()
 
         # Schedule in parallel
-        while ~done:
+        while not done:    # ~False = -1, happened to be okay; but ~True = -2, which is not okay; later it's replace by torch.Tensor, which is okay
             with torch.no_grad():
-                actions = model.policy_old.act(state, memories, dones)
+                actions = model.policy_old.act(state, memories)      # the `memories` stores the data for training; `dones` removed
             state, rewards, dones = env.step(actions)
             done = dones.all()
             memories.rewards.append(rewards)
@@ -116,7 +137,7 @@ def main():
         # Verify the solution
         gantt_result = env.validate_gantt()[0]
         if not gantt_result:
-            print("Scheduling Error！！！！！！")
+            print("Scheduling Error!!!!!!")
         # print("Scheduling Finish")
         env.reset()
 
@@ -131,7 +152,7 @@ def main():
                 viz.line(X=np.array([i]), Y=np.array([loss]),
                     win='window{}'.format(1), update='append', opts=dict(title='loss of envs'))  # deprecated
 
-        # if iter mod x = 0 then validate the policy (x = 10 in paper)
+        # if iter mod x = 0 then validate the policy (x = 10 in the paper)
         if i % train_paras["save_timestep"] == 0:
             print('\nStart validating')
             # Record the average results and the results on each instance

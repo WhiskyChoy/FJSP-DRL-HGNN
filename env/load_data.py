@@ -16,7 +16,7 @@ def load_fjs(lines, num_mas, num_opes):
     for line in lines:
         # first line
         if flag == 0:
-            flag += 1
+            flag += 1   # continue to the next round
         # last line
         elif line is "\n":
             break

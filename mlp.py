@@ -5,9 +5,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-###MLP with lienar output
+###MLP with linear output
 class MLP(nn.Module):
-    def __init__(self, num_layers, input_dim, hidden_dim, output_dim):
+    def __init__(self, num_layers: int, input_dim: int, hidden_dim: int, output_dim: int):
         '''
             num_layers: number of layers in the neural networks (EXCLUDING the input layer). If num_layers=1, this reduces to linear model.
             input_dim: dimensionality of input features
@@ -53,7 +53,7 @@ class MLP(nn.Module):
 
 
 class MLPActor(nn.Module):
-    def __init__(self, num_layers, input_dim, hidden_dim, output_dim):
+    def __init__(self, num_layers: int, input_dim: int, hidden_dim: int, output_dim: int):
         '''
             num_layers: number of layers in the neural networks (EXCLUDING the input layer). If num_layers=1, this reduces to linear model.
             input_dim: dimensionality of input features
@@ -89,7 +89,7 @@ class MLPActor(nn.Module):
                 self.batch_norms.append(nn.BatchNorm1d((hidden_dim)))
             '''
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor)->torch.Tensor:
         if self.linear_or_not:
             # If linear model
             return self.linear(x)
@@ -142,7 +142,7 @@ class MLPCritic(nn.Module):
                 self.batch_norms.append(nn.BatchNorm1d((hidden_dim)))
             '''
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor)->torch.Tensor:
         if self.linear_or_not:
             # If linear model
             return self.linear(x)
