@@ -1,4 +1,4 @@
-# fjsp-drl
+# FJSP-DRL
 
 <!-- Credits: This is forked (or to be forked) from [https://github.com/songwenas12/fjsp-drl](https://github.com/songwenas12/fjsp-drl) with detailed comments and type hints. -->
 
