@@ -118,13 +118,13 @@ class HGNNScheduler(nn.Module):
         self.in_size_ope = model_paras["in_size_ope"]               # Dimension of the raw feature vectors of operation nodes
         self.out_size_ope = model_paras["out_size_ope"]             # Dimension of the embedding of operation nodes
         self.hidden_size_ope = model_paras["hidden_size_ope"]       # Hidden dimensions of the MLPs
-        self.actor_dim = model_paras["actor_in_dim"]  # Input dimension of actor
-        self.critic_dim = model_paras["critic_in_dim"]  # Input dimension of critic
-        self.n_latent_actor = model_paras["n_latent_actor"]  # Hidden dimensions of the actor
-        self.n_latent_critic = model_paras["n_latent_critic"]  # Hidden dimensions of the critic
-        self.n_hidden_actor = model_paras["n_hidden_actor"]  # Number of layers in actor
-        self.n_hidden_critic = model_paras["n_hidden_critic"]  # Number of layers in critic
-        self.action_dim = model_paras["action_dim"]  # Output dimension of actor
+        self.actor_dim = model_paras["actor_in_dim"]                # Input dimension of actor
+        self.critic_dim = model_paras["critic_in_dim"]              # Input dimension of critic
+        self.n_latent_actor = model_paras["n_latent_actor"]         # Hidden dimensions of the actor
+        self.n_latent_critic = model_paras["n_latent_critic"]       # Hidden dimensions of the critic
+        self.n_hidden_actor = model_paras["n_hidden_actor"]         # Number of layers in actor
+        self.n_hidden_critic = model_paras["n_hidden_critic"]       # Number of layers in critic
+        self.action_dim = model_paras["action_dim"]                 # Output dimension of actor
 
         # len(num_heads) means of the number of HGNN iterations
         # and the element means the number of heads of each HGNN (=1 in final experiment)
@@ -201,10 +201,10 @@ class HGNNScheduler(nn.Module):
         # DRL-S and scheduling during training have a consistent number of operations
         else:
             mean_opes = torch.mean(raw_opes, dim=-2, keepdim=True)  # shape: [len(batch_idxes), 1, in_size_ope]
-            mean_mas = torch.mean(raw_mas, dim=-2, keepdim=True)  # shape: [len(batch_idxes), 1, in_size_ma]
-            std_opes = torch.std(raw_opes, dim=-2, keepdim=True)  # shape: [len(batch_idxes), 1, in_size_ope]
-            std_mas = torch.std(raw_mas, dim=-2, keepdim=True)  # shape: [len(batch_idxes), 1, in_size_ma]
-            proc_time_norm = self.feature_normalize(proc_time)  # shape: [len(batch_idxes), num_opes, num_mas]
+            mean_mas = torch.mean(raw_mas, dim=-2, keepdim=True)    # shape: [len(batch_idxes), 1, in_size_ma]
+            std_opes = torch.std(raw_opes, dim=-2, keepdim=True)    # shape: [len(batch_idxes), 1, in_size_ope]
+            std_mas = torch.std(raw_mas, dim=-2, keepdim=True)      # shape: [len(batch_idxes), 1, in_size_ma]
+            proc_time_norm = self.feature_normalize(proc_time)      # shape: [len(batch_idxes), num_opes, num_mas]
         return ((raw_opes - mean_opes) / (std_opes + 1e-5), (raw_mas - mean_mas) / (std_mas + 1e-5),
                 proc_time_norm)
 
@@ -337,8 +337,7 @@ class HGNNScheduler(nn.Module):
                  proc_time: torch.Tensor,
                  jobs_gather: torch.Tensor,
                  eligible: torch.Tensor,
-                 action_envs: torch.Tensor,
-                 flag_sample=False)->Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+                 action_envs: torch.Tensor)->Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         batch_idxes = torch.arange(0, ope_ma_adj.size(-3)).long()
         features = (raw_opes, raw_mas, proc_time)
 
@@ -362,13 +361,14 @@ class HGNNScheduler(nn.Module):
 
         h_actions = torch.cat((h_jobs_padding, h_mas_padding, h_opes_pooled_padding, h_mas_pooled_padding),
                               dim=-1).transpose(1, 2)
+        # actually: h_action_and_state; action: h_jobs_padding, h_mas_padding; state: h_opes_pooled_padding, h_mas_pooled_padding
         h_pooled = torch.cat((h_opes_pooled, h_mas_pooled), dim=-1)
-        scores = self.actor(h_actions).flatten(1)
+        scores: torch.Tensor = self.actor(h_actions); scores = scores.flatten(1)            # actor used
         mask = eligible.transpose(1, 2).flatten(1)
 
         scores[~mask] = float('-inf')
         action_probs = F.softmax(scores, dim=1)
-        state_values: torch.Tensor = self.critic(h_pooled)
+        state_values: torch.Tensor = self.critic(h_pooled)                                  # critic used
         dist = Categorical(action_probs.squeeze())
         action_logprobs: torch.Tensor = dist.log_prob(action_envs)
         dist_entropys: torch.Tensor = dist.entropy()
