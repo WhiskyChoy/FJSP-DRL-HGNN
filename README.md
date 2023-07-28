@@ -45,7 +45,7 @@ After installing the packages, you can activate the environment by running:
 conda activate fjsp-drl
 ```
 
-Note that pynvml is used in ```test.py``` to avoid excessive memory usage of GPU. The code has been modified when using CPU.
+Note that `pynvml` is used in ```test.py``` to avoid excessive memory usage of GPU. The code has been modified so that it doesn't call those `pynvml` relevant functions when using CPU.
 
 ### Introduction
 
