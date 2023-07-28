@@ -30,6 +30,22 @@ Implementation of the IEEE TII paper [Flexible Job Shop Scheduling via Graph Neu
 
 Note that pynvml is used in ```test.py``` to avoid excessive memory usage of GPU, please modify the code when using CPU.
 
+For compatibility concerns, we locked the version of the above packages with a suit of capable packages (some are of higher versions than the least requirement) in ```requirements.yml```. You can install them by running:
+
+```shell
+conda env create -f requirements.yml
+```
+
+This is useful especially as the `gym` package is keeping updating and the latest version may not be compatible with our code.
+
+After installing the packages, you can activate the environment by running:
+
+```shell
+conda activate fjsp-drl
+```
+
+You may change the name of the environment by modifying the `name` field in `requirements.yml`.
+
 ### Introduction
 
 * ```data_dev``` and ```data_test``` are the validation sets and test sets, respectively.
