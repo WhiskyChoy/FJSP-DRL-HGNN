@@ -41,9 +41,11 @@ def main():
         setup_seed(3407)            # magic seed
     # PyTorch initialization
     # gpu_tracker = MemTracker()  # Used to monitor memory (of gpu)
-    pynvml.nvmlInit()
-    handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    cuda_available = torch.cuda.is_available()
+    device = torch.device("cuda:0" if cuda_available else "cpu")
+    if cuda_available:
+        pynvml.nvmlInit()
+        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
     if device.type=='cuda':
         torch.cuda.set_device(device)
         torch.set_default_tensor_type('torch.cuda.FloatTensor')
@@ -133,9 +135,10 @@ def main():
             # Create environment object
             else:
                 # Clear the existing environment
-                meminfo = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                if meminfo.used / meminfo.total > 0.7:
-                    envs.clear()
+                if cuda_available:
+                    meminfo = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                    if meminfo.used / meminfo.total > 0.7:
+                        envs.clear()
                 # DRL-S, each env contains multiple (=num_sample) copies of one instance
                 if test_paras["sample"]:
                     env = gym.make('fjsp-v0', case=[test_file] * test_paras["num_sample"],

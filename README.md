@@ -28,7 +28,7 @@ Implementation of the IEEE TII paper [Flexible Job Shop Scheduling via Graph Neu
 * pandas $\ge$ 1.1.5
 * visdom $\ge$ 0.1.8.9
 
-Note that pynvml is used in ```test.py``` to avoid excessive memory usage of GPU, please modify the code when using CPU.
+Note that pynvml is used in ```test.py``` to avoid excessive memory usage of GPU. The code has been modified when using CPU.
 
 ### Introduction
 
