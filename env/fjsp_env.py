@@ -199,8 +199,8 @@ class FJSPEnv(gym.Env):
         self.machines_batch = torch.zeros(size=(self.batch_size, self.num_mas, 4))
         self.machines_batch[:, :, 0] = torch.ones(size=(self.batch_size, self.num_mas))
 
-        self.makespan_batch = torch.max(self.feat_opes_batch[:, 4, :], dim=1)[0]  # shape: (batch_size)
-        self.done_batch = self.mask_job_finish_batch.all(dim=1)  # shape: (batch_size)
+        self.makespan_batch: torch.Tensor = torch.max(self.feat_opes_batch[:, 4, :], dim=1)[0]  # shape: (batch_size)
+        self.done_batch: torch.Tensor = self.mask_job_finish_batch.all(dim=1)  # shape: (batch_size)
 
         self.state = EnvState(batch_idxes=self.batch_idxes,
                               feat_opes_batch=self.feat_opes_batch, feat_mas_batch=self.feat_mas_batch,
