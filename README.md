@@ -1,4 +1,4 @@
-# fjsp-drl
+# FJSP-DRL
 
 <!-- Credits: This is forked (or to be forked) from [https://github.com/songwenas12/fjsp-drl](https://github.com/songwenas12/fjsp-drl) with detailed comments and type hints. -->
 
@@ -27,6 +27,23 @@ Implementation of the IEEE TII paper [Flexible Job Shop Scheduling via Graph Neu
 * numpy $\ge$ 1.19.5
 * pandas $\ge$ 1.1.5
 * visdom $\ge$ 0.1.8.9
+* matplotlib $\ge$ 3.5.3
+
+Note that pynvml is used in `test.py` to avoid excessive memory usage of GPU, please modify the code when using CPU.
+
+For compatibility concerns, we locked the version of the above packages with a suit of capable packages (some are of higher versions than the least requirement) in `requirements.yml` using `conda`. You can install them by running:
+
+```shell
+conda env create -f requirements.yml
+```
+
+This is useful especially as the `gym` package is keeping updating and the latest version may not be compatible with our code.
+
+After installing the packages, you can activate the environment by running:
+
+```shell
+conda activate fjsp-drl
+```
 
 Note that pynvml is used in ```test.py``` to avoid excessive memory usage of GPU. The code has been modified when using CPU.
 

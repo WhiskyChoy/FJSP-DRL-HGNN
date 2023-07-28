@@ -1,4 +1,4 @@
-name: songwen
+name: fjsp-drl
 channels:
   - pytorch
   - nvidia

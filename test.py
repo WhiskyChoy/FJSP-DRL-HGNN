@@ -74,7 +74,7 @@ def main():
     memories = PPO_model.Memory()
     model = PPO_model.PPO(model_paras, train_paras) # the `train_paras` is just for initializing the model structure
     rules: List[str] = test_paras["rules"]
-    envs = []  # Store multiple environments
+    envs: List[FJSPEnv] = []  # Store multiple environments
 
     # Detect and add models to "rules"
     if "DRL" in rules:      # auto add all models
@@ -152,7 +152,9 @@ def main():
             # Schedule an instance/environment
             # DRL-S
             if test_paras["sample"]:
-                env.reset()
+                # env.reset()
+                # The author already reset the environment in the `__init__` function; however, in latest version of gym,
+                # the `reset` function is forced to be called after the environment is created
                 makespan, time_re = schedule(env, model, memories, flag_sample=test_paras["sample"])
                 makespans.append(torch.min(makespan))
                 times.append(time_re)
@@ -160,7 +162,9 @@ def main():
             else:
                 time_s = []
                 makespan_s = []  # In fact, the results obtained by DRL-G do not change
-                env.reset()
+                # env.reset()
+                # The author already reset the environment in the `__init__` function; however, in latest version of gym,
+                # the `reset` function is forced to be called after the environment is created
                 for j in range(test_paras["num_average"]):
                     makespan, time_re = schedule(env, model, memories)
                     makespan_s.append(makespan)
