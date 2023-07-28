@@ -27,6 +27,7 @@ Implementation of the IEEE TII paper [Flexible Job Shop Scheduling via Graph Neu
 * numpy $\ge$ 1.19.5
 * pandas $\ge$ 1.1.5
 * visdom $\ge$ 0.1.8.9
+* matplotlib $\ge$ 3.5.3
 
 Note that pynvml is used in `test.py` to avoid excessive memory usage of GPU, please modify the code when using CPU.
 
