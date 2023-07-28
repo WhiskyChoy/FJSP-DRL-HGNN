@@ -42,7 +42,7 @@ class GATedge(nn.Module):
         self.leaky_relu = nn.LeakyReLU(negative_slope)
 
         self.reset_parameters()
-        self.activation = activation
+        self.activation = activation        # not used!!!
 
     def reset_parameters(self):
         gain = nn.init.calculate_gain('relu')
