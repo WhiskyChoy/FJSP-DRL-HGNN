@@ -36,6 +36,7 @@
         "constrs",
         "crtfld",
         "CUBLAS",
+        "cuda",
         "cudatoolkit",
         "cudnn",
         "cumcount",
