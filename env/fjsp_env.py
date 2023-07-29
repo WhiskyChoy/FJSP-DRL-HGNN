@@ -4,7 +4,7 @@ import torch
 
 from dataclasses import dataclass
 from env.load_data import load_fjs, nums_detec
-import numpy as np
+# import numpy as np                        # used in np.argwhere(); question: why return tensor when the input is tensor? why accept tensor as input?
 import matplotlib.pyplot as plt             # type: ignore
 import matplotlib.patches as mpatches       # type: ignore
 import random
@@ -31,7 +31,7 @@ class EnvState:
     feat_opes_batch: torch.Tensor = None                # type: ignore              # Operation features
     feat_mas_batch: torch.Tensor = None                 # type: ignore              # Machine features
     proc_times_batch: torch.Tensor = None               # type: ignore              # Processing time
-    ope_ma_adj_batch: torch.Tensor = None               # type: ignore              # Adjacency matrix of operations and machines
+    ope_ma_adj_batch: torch.Tensor = None               # type: ignore              # Adjacency matrix of operations and machines (assignment & possible assignment)
 
     mask_job_procing_batch: torch.Tensor = None         # type: ignore              # bool_vec for jobs in process
     mask_job_finish_batch: torch.Tensor = None          # type: ignore              # bool_vec for completed jobs, complementation of `mask_job_procing_batch`
@@ -94,7 +94,7 @@ class FJSPEnv(gym.Env):
         self.paras = env_paras                      # Parameters; in-place modification for parameters storage
         self.device = env_paras["device"]           # Computing device for PyTorch
         # load instance
-        num_data = 8  # The amount of data extracted from instance
+        num_data = 8                                # The amount of data extracted from instance
         tensors: List[List[torch.Tensor]] = [[] for _ in range(num_data)]
         self.num_opes = 0
         lines: List[List[str]] = []      # actually a list of list (i.e list of lines)
@@ -224,8 +224,8 @@ class FJSPEnv(gym.Env):
         # self.machines_batch[:, :, 3] already initialized to 0                                                         # id_ope (question again: why 0 is okay for initialization? Since 0 is for the first one)
 
         # ↓ Makespan and completion signal of each instance, dynamic
-        self.makespan_batch: torch.Tensor = torch.max(self.feat_opes_batch[:, 4, :], dim=1)[0]                          # shape: (batch_size), feat_opes_batch[:, 4, :] is for job completion time of operations
-        self.done_batch: torch.Tensor = self.mask_job_finish_batch.all(dim=1)                                           # shape: (batch_size), True for all job completed of some instance
+        self.makespan_batch: torch.Tensor = torch.max(self.feat_opes_batch[:, 4, :], dim=1)[0]                          # shape: (batch_size,), feat_opes_batch[:, 4, :] is for job completion time of operations
+        self.done_batch: torch.Tensor = self.mask_job_finish_batch.all(dim=1)                                           # shape: (batch_size,), True for all job completed of some instance
 
         self.state = EnvState(batch_idxes=self.batch_idxes,
                               feat_opes_batch=self.feat_opes_batch,
@@ -243,21 +243,26 @@ class FJSPEnv(gym.Env):
                               time_batch=self.time, nums_opes_batch=self.nums_opes)
 
         # Save initial data for reset
-        self.old_proc_times_batch = copy.deepcopy(self.proc_times_batch)
-        self.old_ope_ma_adj_batch = copy.deepcopy(self.ope_ma_adj_batch)
+        self.old_proc_times_batch = copy.deepcopy(self.proc_times_batch)            # why? it's already in the state
+        self.old_ope_ma_adj_batch = copy.deepcopy(self.ope_ma_adj_batch)            # why? it's already in the state
         self.old_cal_cumul_adj_batch = copy.deepcopy(self.cal_cumul_adj_batch)
-        self.old_feat_opes_batch = copy.deepcopy(self.feat_opes_batch)
-        self.old_feat_mas_batch = copy.deepcopy(self.feat_mas_batch)
+        self.old_feat_opes_batch = copy.deepcopy(self.feat_opes_batch)              # why? it's already in the state
+        self.old_feat_mas_batch = copy.deepcopy(self.feat_mas_batch)                # why? it's already in the state
         self.old_state = copy.deepcopy(self.state)
 
-    def step(self, actions):
+    def step(self, actions: torch.Tensor):
         '''
         Environment transition function
+        
+        Shape of `actions`: (3, batch_size)
+        Please check PPO_model.HGNNScheduler.act() for more details
+
+        The `opes` can already determine the `jobs`, but we keep the `jobs` for convenience
         '''
-        opes = actions[0, :]
-        mas = actions[1, :]
-        jobs = actions[2, :]
-        self.N += 1
+        opes = actions[0, :]            # the outer, or say, the flattened operation idx, not the intra-index of each job, shape: (batch_size,), a row vector
+        mas = actions[1, :]             # the machine idx, shape: (batch_size,), a row vector
+        jobs = actions[2, :]            # the job idx, shape: (batch_size,), a row vector
+        self.N += 1                     # Count scheduled operations
 
         # Removed unselected O-M arcs of the scheduled operations
         remain_ope_ma_adj = torch.zeros(size=(self.batch_size, self.num_mas), dtype=torch.int64)
@@ -285,7 +290,7 @@ class FJSPEnv(gym.Env):
         start_ope = self.num_ope_biases_batch[self.batch_idxes, jobs]
         end_ope = self.end_ope_biases_batch[self.batch_idxes, jobs]
         for i in range(self.batch_idxes.size(0)):
-            self.feat_opes_batch[self.batch_idxes[i], 3, start_ope[i]:end_ope[i]+1] -= 1
+            self.feat_opes_batch[self.batch_idxes[i], 3, start_ope[i]:end_ope[i]+1] -= 1    # type: ignore
 
         # Update 'Start time' and 'Job completion time'
         self.feat_opes_batch[self.batch_idxes, 5, opes] = self.time[self.batch_idxes]
@@ -363,12 +368,12 @@ class FJSPEnv(gym.Env):
             op_proc_time)
         flag_trans_2_next_time = torch.sum(torch.where(ma_eligible & job_eligible, op_proc_time.double(), 0.0).transpose(1, 2),
                                            dim=[1, 2])
-        # shape: (batch_size)
+        # shape: (batch_size,), a boolean Tensor
         # An element value of 0 means that the corresponding instance has no eligible O-M pairs
         # in other words, the environment need to transit to the next time
         return flag_trans_2_next_time
 
-    def next_time(self, flag_trans_2_next_time):
+    def next_time(self, flag_trans_2_next_time: torch.Tensor):
         '''
         Transit to the next time
         '''
@@ -398,7 +403,10 @@ class FJSPEnv(gym.Env):
         self.feat_mas_batch[:, 2, :] = utiliz
 
         jobs = torch.where(d, self.machines_batch[:, :, 3].double(), -1.0).float()
-        jobs_index = np.argwhere(jobs.cpu() >= 0).to(self.device)
+        # jobs_index = np.argwhere(jobs.cpu() >= 0).to(self.device)       # type: ignore # question: why np.argwhere also work? and torch.argwhere doesn't work?
+        jobs_index = torch.nonzero(jobs >= 0, as_tuple=True)              # https://github.com/pytorch/pytorch/issues/64502
+        # ↑ torch.nonzero is similar to np.argwhere not np.nonzero
+
         job_idxes = jobs[jobs_index[0], jobs_index[1]].long()
         batch_idxes = jobs_index[0]
 

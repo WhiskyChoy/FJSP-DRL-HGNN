@@ -303,7 +303,7 @@ class HGNNScheduler(nn.Module):
         return action_probs, ope_step_batch, h_pooled
 
     def act(self, state: EnvState, memories: Memory, flag_sample: bool=True, flag_train: bool=True):
-        # ↑ The `dones` is not used
+        # ↑ The `dones` is not used (hence removed from the input)
         # ↑ The `memories` is only used in training (in-place modification)
         # Get probability of actions and the id of the current operation (be waiting to be processed) of each job
         action_probs, ope_step_batch, _ = self.get_action_prob(state, memories, flag_sample, flag_train=flag_train)
@@ -317,6 +317,10 @@ class HGNNScheduler(nn.Module):
             action_indexes = action_probs.argmax(dim=1)
 
         # Calculate the machine, job and operation index based on the action index
+        # i.e. decoding the flatten action index: FlattenIdx -> (JobIdx, MachineIdx), since each job will at most have only one operation to be processed
+        # then the OperationIdx will be concatenated back (although it's the flattened operation index and could determine the corresponding job)
+        # Since the number of machines is fixed, the MachineIdx can be calculated by the FlattenIdx, and the total number of actions follows the equation:
+        # NumActions = NumJobs * NumMachines (each job holds one partition, with NumMachines slots)
         mas = (action_indexes / state.mask_job_finish_batch.size(1)).long()
         jobs = (action_indexes % state.mask_job_finish_batch.size(1)).long()
         opes = ope_step_batch[state.batch_idxes, jobs]

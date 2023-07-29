@@ -178,13 +178,13 @@ def main():
     # Save the data of training curve to files
     data = pd.DataFrame(np.array(valid_results).transpose(), columns=["res"])
     data.to_excel(writer_ave, sheet_name='Sheet1', index=False, startcol=1)
-    writer_ave.save()
-    writer_ave.close()
+    # writer_ave.save()
+    writer_ave.close()      # the `close()` is actually synonym for `save()`, to make it more file-like
     column = [i_col for i_col in range(100)]
     data = pd.DataFrame(np.array(torch.stack(valid_results_100, dim=0).to('cpu')), columns=column)
     data.to_excel(writer_100, sheet_name='Sheet1', index=False, startcol=1)
-    writer_100.save()
-    writer_100.close()
+    # writer_100.save()
+    writer_100.close()      # the `close()` is actually synonym for `save()`, to make it more file-like
 
     print("total_time: ", time.time() - start_time)
 

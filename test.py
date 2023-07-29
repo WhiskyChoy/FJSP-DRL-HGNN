@@ -96,11 +96,11 @@ def main():
     file_name = [test_files[i] for i in range(num_ins)]
     data_file = pd.DataFrame(file_name, columns=["file_name"])
     data_file.to_excel(writer, sheet_name='Sheet1', index=False)
-    writer.save()
-    writer.close()
+    # writer.save()
+    writer.close()          # the `close()` is actually synonym for `save()`, to make it more file-like
     data_file.to_excel(writer_time, sheet_name='Sheet1', index=False)
-    writer_time.save()
-    writer_time.close()
+    # writer_time.save()
+    writer_time.close()     # the `close()` is actually synonym for `save()`, to make it more file-like
 
     # Rule-by-rule (model-by-model) testing
     start = time.time()
@@ -178,11 +178,11 @@ def main():
         # Save makespan and time data to files
         data = pd.DataFrame(torch.tensor(makespans).t().tolist(), columns=[rule])
         data.to_excel(writer, sheet_name='Sheet1', index=False, startcol=i_rules + 1)
-        writer.save()
+        # writer.save()             # the `close()` is actually synonym for `save()`, to make it more file-like
         writer.close()
         data = pd.DataFrame(torch.tensor(times).t().tolist(), columns=[rule])
         data.to_excel(writer_time, sheet_name='Sheet1', index=False, startcol=i_rules + 1)
-        writer_time.save()
+        # writer_time.save()        # the `close()` is actually synonym for `save()`, to make it more file-like
         writer_time.close()
 
         for env in envs:
