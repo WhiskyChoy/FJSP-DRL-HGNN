@@ -20,24 +20,24 @@ class EnvState:
     Class for the state of the environment
     '''
     # static
-    opes_appertain_batch: torch.Tensor = None           # type: ignore
-    ope_pre_adj_batch: torch.Tensor = None              # type: ignore
-    ope_sub_adj_batch: torch.Tensor = None              # type: ignore
-    end_ope_biases_batch: torch.Tensor = None           # type: ignore
-    nums_opes_batch: torch.Tensor = None                # type: ignore
+    opes_appertain_batch: torch.Tensor = None           # type: ignore              # The mapping from operations to the jobs they belong to
+    ope_pre_adj_batch: torch.Tensor = None              # type: ignore              # Adjacency matrix of operations and operations (precedence)
+    ope_sub_adj_batch: torch.Tensor = None              # type: ignore              # Adjacency matrix of operations and operations (direct successive in the subsequence)
+    end_ope_biases_batch: torch.Tensor = None           # type: ignore              # The id of the last operation of each job
+    nums_opes_batch: torch.Tensor = None                # type: ignore              # The number of operations for each instance (the whole instance, not only some job)
 
     # dynamic
-    batch_idxes: torch.Tensor = None                    # type: ignore
-    feat_opes_batch: torch.Tensor = None                # type: ignore
-    feat_mas_batch: torch.Tensor = None                 # type: ignore
-    proc_times_batch: torch.Tensor = None               # type: ignore
-    ope_ma_adj_batch: torch.Tensor = None               # type: ignore
+    batch_idxes: torch.Tensor = None                    # type: ignore              # Uncompleted instances
+    feat_opes_batch: torch.Tensor = None                # type: ignore              # Operation features
+    feat_mas_batch: torch.Tensor = None                 # type: ignore              # Machine features
+    proc_times_batch: torch.Tensor = None               # type: ignore              # Processing time
+    ope_ma_adj_batch: torch.Tensor = None               # type: ignore              # Adjacency matrix of operations and machines
 
-    mask_job_procing_batch: torch.Tensor = None         # type: ignore
-    mask_job_finish_batch: torch.Tensor = None          # type: ignore
-    mask_ma_procing_batch: torch.Tensor = None          # type: ignore
-    ope_step_batch: torch.Tensor = None                 # type: ignore
-    time_batch:  torch.Tensor = None                    # type: ignore
+    mask_job_procing_batch: torch.Tensor = None         # type: ignore              # bool_vec for jobs in process
+    mask_job_finish_batch: torch.Tensor = None          # type: ignore              # bool_vec for completed jobs, complementation of `mask_job_procing_batch`
+    mask_ma_procing_batch: torch.Tensor = None          # type: ignore              # bool_vec for machines in process
+    ope_step_batch: torch.Tensor = None                 # type: ignore              # The id of the current operation (be waiting to be processed) of each job
+    time_batch:  torch.Tensor = None                    # type: ignore              # Current time of each instance in the environment
 
     def update(self,
                batch_idxes: torch.Tensor,
@@ -50,6 +50,9 @@ class EnvState:
                mask_ma_procing_batch: torch.Tensor,
                ope_step_batch: torch.Tensor,
                time_batch: torch.Tensor):
+        '''
+        Only update the dynamic variables
+        '''
         self.batch_idxes = batch_idxes
         self.feat_opes_batch = feat_opes_batch
         self.feat_mas_batch = feat_mas_batch
@@ -84,12 +87,12 @@ class FJSPEnv(gym.Env):
 
         # load paras
         # static
-        self.show_mode = env_paras["show_mode"]  # Result display mode (deprecated in the final experiment)
-        self.batch_size = env_paras["batch_size"]  # Number of parallel instances during training
-        self.num_jobs = env_paras["num_jobs"]  # Number of jobs
-        self.num_mas = env_paras["num_mas"]  # Number of machines
-        self.paras = env_paras  # Parameters
-        self.device = env_paras["device"]  # Computing device for PyTorch
+        self.show_mode = env_paras["show_mode"]     # Result display mode (deprecated in the final experiment)
+        self.batch_size = env_paras["batch_size"]   # Number of parallel instances during training
+        self.num_jobs = env_paras["num_jobs"]       # Number of jobs
+        self.num_mas = env_paras["num_mas"]         # Number of machines
+        self.paras = env_paras                      # Parameters; in-place modification for parameters storage
+        self.device = env_paras["device"]           # Computing device for PyTorch
         # load instance
         num_data = 8  # The amount of data extracted from instance
         tensors: List[List[torch.Tensor]] = [[] for _ in range(num_data)]
@@ -116,39 +119,41 @@ class FJSPEnv(gym.Env):
                 tensors[j].append(load_data[j])
 
         # dynamic feats
-        # shape: (batch_size, num_opes, num_mas)
-        self.proc_times_batch = torch.stack(tensors[0], dim=0)
-        # shape: (batch_size, num_opes, num_mas)
-        self.ope_ma_adj_batch = torch.stack(tensors[1], dim=0).long()
+        # ↓ shape: (batch_size, num_opes, num_mas)
+        self.proc_times_batch = torch.stack(tensors[0], dim=0)  # also .float()?    # processing time of each operation on each machine
+        # ↑ it's some dynamic feature, as when some operations are scheduled, only the selected machine's processing time is retained
+        # ↓ shape: (batch_size, num_opes, num_mas)
+        self.ope_ma_adj_batch = torch.stack(tensors[1], dim=0).long()               # adjacency matrix of operations and machines
         # shape: (batch_size, num_opes, num_opes), for calculating the cumulative amount along the path of each job
         self.cal_cumul_adj_batch = torch.stack(tensors[7], dim=0).float()
+        # ↑ adjacency matrix of operations and operations (for calculating the cumulative amount along the path of each job)
 
         # static feats
-        # shape: (batch_size, num_opes, num_opes)
-        self.ope_pre_adj_batch = torch.stack(tensors[2], dim=0)
-        # shape: (batch_size, num_opes, num_opes)
-        self.ope_sub_adj_batch = torch.stack(tensors[3], dim=0)
-        # shape: (batch_size, num_opes), represents the mapping between operations and jobs
-        self.opes_appertain_batch = torch.stack(tensors[4], dim=0).long()     # "appertain" means "belong to"
-        # shape: (batch_size, num_jobs), the id of the first operation of each job
-        self.num_ope_biases_batch = torch.stack(tensors[5], dim=0).long()
-        # shape: (batch_size, num_jobs), the number of operations for each job
-        self.nums_ope_batch = torch.stack(tensors[6], dim=0).long()
-        # shape: (batch_size, num_jobs), the id of the last operation of each job
-        self.end_ope_biases_batch = self.num_ope_biases_batch + self.nums_ope_batch - 1
-        # shape: (batch_size), the number of operations for each instance
+        # ↓ shape: (batch_size, num_opes, num_opes)
+        self.ope_pre_adj_batch = torch.stack(tensors[2], dim=0)             # adjacency matrix of operations and operations (precedence)    
+        # ↓ shape: (batch_size, num_opes, num_opes)
+        self.ope_sub_adj_batch = torch.stack(tensors[3], dim=0)             # adjacency matrix of operations and operations (direct successive in the subsequence)
+        # ↓ shape: (batch_size, num_opes), represents the mapping between operations and jobs
+        self.opes_appertain_batch = torch.stack(tensors[4], dim=0).long()   # "appertain" means "belong to"; the mapping between operations and jobs
+        # ↓ shape: (batch_size, num_jobs), the id of the first operation of each job
+        self.num_ope_biases_batch = torch.stack(tensors[5], dim=0).long()   # the id of the first operation of each job
+        # ↓ shape: (batch_size, num_jobs), the number of operations for each job
+        self.nums_ope_batch = torch.stack(tensors[6], dim=0).long()                         # the number of operations for each job
+        # ↓ shape: (batch_size, num_jobs), the id of the last operation of each job
+        self.end_ope_biases_batch = self.num_ope_biases_batch + self.nums_ope_batch - 1     # the id of the last operation of each job
+        # ↓ shape: (batch_size), the number of operations for each instance
         self.nums_opes = torch.sum(self.nums_ope_batch, dim=1)
 
-        # dynamic variable
-        self.batch_idxes = torch.arange(self.batch_size)  # Uncompleted instances
-        self.time = torch.zeros(self.batch_size)  # Current time of the environment
-        self.N = torch.zeros(self.batch_size).int()  # Count scheduled operations
-        # shape: (batch_size, num_jobs), the id of the current operation (be waiting to be processed) of each job
-        self.ope_step_batch = copy.deepcopy(self.num_ope_biases_batch)
+        # dynamic variables
+        self.batch_idxes = torch.arange(self.batch_size)                # Uncompleted instances
+        self.time = torch.zeros(self.batch_size)                        # Current time of the instance in the environment
+        self.N = torch.zeros(self.batch_size).int()                     # Count scheduled operations
+        # ↓ shape: (batch_size, num_jobs)
+        self.ope_step_batch = copy.deepcopy(self.num_ope_biases_batch)  # the id of the current operation (be waiting to be processed) of each job
         '''
         features, dynamic
             ope:
-                Status                                                                              feat_opes_batch[:, 0, :]
+                Status (1: scheduled, 0: not scheduled, until step t)                               feat_opes_batch[:, 0, :]
                 Number of neighboring machines                                                      feat_opes_batch[:, 1, :]
                 Processing time                                                                     feat_opes_batch[:, 2, :]
                 Number of unscheduled operations in the job that the operation belongs to           feat_opes_batch[:, 3, :]
@@ -190,36 +195,45 @@ class FJSPEnv(gym.Env):
         # shape: (batch_size, num_jobs), True for jobs in process
         self.mask_job_procing_batch = torch.full(size=(self.batch_size, num_jobs), dtype=torch.bool, fill_value=False)  # bool_vec for jobs in process
         # shape: (batch_size, num_jobs), True for completed jobs
-        self.mask_job_finish_batch = torch.full(size=(self.batch_size, num_jobs), dtype=torch.bool, fill_value=False)   # bool_vec for completed jobs
+        self.mask_job_finish_batch = torch.full(size=(self.batch_size, num_jobs), dtype=torch.bool, fill_value=False)   # bool_vec for completed jobs, complementation of `mask_job_procing_batch`
         # shape: (batch_size, num_mas), True for machines in process
         self.mask_ma_procing_batch = torch.full(size=(self.batch_size, num_mas), dtype=torch.bool, fill_value=False)    # bool_vec for machines in process
         '''
-        Partial Schedule (state) of jobs/operations, dynamic
+        Partial Schedule (state) of jobs/operations, dynamic                                                            would be used to calculate the reward
             Status
             Allocated machines
             Start time
             End time
         '''
-        self.schedules_batch = torch.zeros(size=(self.batch_size, self.num_opes, 4))
-        self.schedules_batch[:, :, 2] = feat_opes_batch[:, 5, :]
-        self.schedules_batch[:, :, 3] = feat_opes_batch[:, 5, :] + feat_opes_batch[:, 2, :]
+        self.schedules_batch = torch.zeros(size=(self.batch_size, self.num_opes, 4))                                    # Status, Allocated machines, Start time, End time
+        # self.schedules_batch[:, :, 0] already initialized to 0                                                        # Status
+        # self.schedules_batch[:, :, 1] already initialized to 0                                                        # Allocated machines (question: why 0 is okay for initialization? Since 0 is for the first one)
+        self.schedules_batch[:, :, 2] = feat_opes_batch[:, 5, :]                                                        # Start time
+        self.schedules_batch[:, :, 3] = feat_opes_batch[:, 5, :] + feat_opes_batch[:, 2, :]                             # End time
         '''
         Partial Schedule (state) of machines, dynamic
-            idle
+            idle (0: not idle, 1: idle)
             available_time
             utilization_time
             id_ope
         '''
-        self.machines_batch = torch.zeros(size=(self.batch_size, self.num_mas, 4))
-        self.machines_batch[:, :, 0] = torch.ones(size=(self.batch_size, self.num_mas))
+        self.machines_batch = torch.zeros(size=(self.batch_size, self.num_mas, 4))                                      # idle, available_time, utilization_time, id_ope
+        self.machines_batch[:, :, 0] = torch.ones(size=(self.batch_size, self.num_mas))                                 # idle
+        # self.machines_batch[:, :, 1] already initialized to 0                                                         # available_time
+        # self.machines_batch[:, :, 2] already initialized to 0                                                         # utilization_time
+        # self.machines_batch[:, :, 3] already initialized to 0                                                         # id_ope (question again: why 0 is okay for initialization? Since 0 is for the first one)
 
-        self.makespan_batch: torch.Tensor = torch.max(self.feat_opes_batch[:, 4, :], dim=1)[0]  # shape: (batch_size)
-        self.done_batch: torch.Tensor = self.mask_job_finish_batch.all(dim=1)                   # shape: (batch_size)
+        # ↓ Makespan and completion signal of each instance, dynamic
+        self.makespan_batch: torch.Tensor = torch.max(self.feat_opes_batch[:, 4, :], dim=1)[0]                          # shape: (batch_size), feat_opes_batch[:, 4, :] is for job completion time of operations
+        self.done_batch: torch.Tensor = self.mask_job_finish_batch.all(dim=1)                                           # shape: (batch_size), True for all job completed of some instance
 
         self.state = EnvState(batch_idxes=self.batch_idxes,
-                              feat_opes_batch=self.feat_opes_batch, feat_mas_batch=self.feat_mas_batch,
-                              proc_times_batch=self.proc_times_batch, ope_ma_adj_batch=self.ope_ma_adj_batch,
-                              ope_pre_adj_batch=self.ope_pre_adj_batch, ope_sub_adj_batch=self.ope_sub_adj_batch,
+                              feat_opes_batch=self.feat_opes_batch,
+                              feat_mas_batch=self.feat_mas_batch,
+                              proc_times_batch=self.proc_times_batch,
+                              ope_ma_adj_batch=self.ope_ma_adj_batch,
+                              ope_pre_adj_batch=self.ope_pre_adj_batch,
+                              ope_sub_adj_batch=self.ope_sub_adj_batch,
                               mask_job_procing_batch=self.mask_job_procing_batch,
                               mask_job_finish_batch=self.mask_job_finish_batch,
                               mask_ma_procing_batch=self.mask_ma_procing_batch,
