@@ -258,6 +258,14 @@ class FJSPEnv(gym.Env):
         Please check PPO_model.HGNNScheduler.act() for more details
 
         The `opes` can already determine the `jobs`, but we keep the `jobs` for convenience
+
+        For the "Removed unselected O-M arcs of the scheduled operations":
+        below is the one line version of implementation in replacing those unselected O-M arcs of the scheduled operations to be 0 given the selected operations
+
+        self.ope_ma_adj_batch[self.batch_idxes, opes] = torch.zeros(size=(self.batch_size, self.num_mas), dtype=torch.int64).index_put_((self.batch_idxes, mas), torch.tensor(1, dtype=torch.int64)) # using broadcasting, but could not use 1 for torch.tensor(1, dtype=torch.int64) directly
+
+        self.ope_ma_adj_batch[self.batch_idxes, opes] = torch.zeros(size=(self.batch_size, self.num_mas), dtype=torch.int64).index_put_((self.batch_idxes, mas), torch.ones(len(self.batch_idxes), dtype=torch.int64))  # no broadcasting version
+        # torch.Tensor.index_put(): out-place version; torch.Tensor.index_put_(): in-place version
         '''
         opes = actions[0, :]            # the outer, or say, the flattened operation idx, not the intra-index of each job, shape: (batch_size,), a row vector
         mas = actions[1, :]             # the machine idx, shape: (batch_size,), a row vector
@@ -266,9 +274,16 @@ class FJSPEnv(gym.Env):
 
         # Removed unselected O-M arcs of the scheduled operations
         remain_ope_ma_adj = torch.zeros(size=(self.batch_size, self.num_mas), dtype=torch.int64)
-        remain_ope_ma_adj[self.batch_idxes, mas] = 1
+        remain_ope_ma_adj[self.batch_idxes, mas] = 1        # mark those machine-used's link as 1; those not-used's link as 0 (default value)
+        # ↑ It's a bit weird to use this intermediate variable, but it's convenient to reuse such a variable
+        # - It actually provide a slice, no matter what the operation is (to be determined on the left hand side), it ensure that
+        #   those machine to be used are marked as 1, and those not to be used are marked as 0
+        # - Also note that each slice will not be reused, each can be referred to by the (operation, machine) pair in the input
+        # ↓ shape of `ope_ma_adj_batch`: (batch_size, num_opes, num_mas)
         self.ope_ma_adj_batch[self.batch_idxes, opes] = remain_ope_ma_adj[self.batch_idxes, :]
-        self.proc_times_batch *= self.ope_ma_adj_batch
+        # self.ope_ma_adj_batch[self.batch_idxes, opes] = torch.zeros(size=(self.batch_size, self.num_mas), dtype=torch.int64).index_put_((self.batch_idxes, mas), torch.tensor(1, dtype=torch.int64))
+        self.proc_times_batch *= self.ope_ma_adj_batch      # use the adjacency matrix to filter out the processing time of the unselected O-M arcs
+        # ↑ Those without assignment link will be masked to be 0
 
         # Update for some O-M arcs are removed, such as 'Status', 'Number of neighboring machines' and 'Processing time'
         proc_times = self.proc_times_batch[self.batch_idxes, opes, mas]
@@ -276,19 +291,16 @@ class FJSPEnv(gym.Env):
                                                                         torch.ones(self.batch_idxes.size(0), dtype=torch.float),
                                                                         proc_times), dim=1)
         last_opes = torch.where(opes - 1 < self.num_ope_biases_batch[self.batch_idxes, jobs], self.num_opes - 1, opes - 1)
-        # Determine the shape of the slice you're indexing
+        # Determine the shape of the slice that's indexing
         slice_shape = self.cal_cumul_adj_batch[self.batch_idxes, last_opes, :].shape
         # Create a tensor of zeros with the same shape
         zeros = torch.zeros(slice_shape, device=self.cal_cumul_adj_batch.device)
-        # print(f"Shape of cal_cumul_adj_batch: {self.cal_cumul_adj_batch.shape}")
-        # print(f"Shape of batch_idxes: {self.batch_idxes.shape}")
-        # print(f"Shape of last_opes: {last_opes.shape}")
-        self.cal_cumul_adj_batch[self.batch_idxes, last_opes, :] = zeros
+        self.cal_cumul_adj_batch[self.batch_idxes, last_opes, :] = zeros    # may directly set to be 0, but could cause error in deterministic mode
         # ↑ broadcasting doesn't work in deterministic mode, or we can just set self.cal_cumul_adj_batch[self.batch_idxes, last_opes, :] = 0
 
         # Update 'Number of unscheduled operations in the job'
-        start_ope = self.num_ope_biases_batch[self.batch_idxes, jobs]
-        end_ope = self.end_ope_biases_batch[self.batch_idxes, jobs]
+        start_ope = self.num_ope_biases_batch[self.batch_idxes, jobs]       # those starting operation idx of the jobs in those unfinished instances in the batch
+        end_ope = self.end_ope_biases_batch[self.batch_idxes, jobs]         # those ending operation idx of the jobs in those unfinished instances in the batch
         for i in range(self.batch_idxes.size(0)):
             self.feat_opes_batch[self.batch_idxes[i], 3, start_ope[i]:end_ope[i]+1] -= 1    # type: ignore
 
