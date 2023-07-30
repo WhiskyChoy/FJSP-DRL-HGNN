@@ -171,7 +171,7 @@ class FJSPEnv(gym.Env):
         # ↓ Features of operations
         # feat_opes_batch[:, 0, :] already initialized to 0                                                             # Status
         feat_opes_batch[:, 1, :] = torch.count_nonzero(self.ope_ma_adj_batch, dim=2)                                    # Number of neighboring machines
-        feat_opes_batch[:, 2, :] = torch.sum(self.proc_times_batch, dim=2).div(feat_opes_batch[:, 1, :] + 1e-9)         # Operation Processing time
+        feat_opes_batch[:, 2, :] = torch.sum(self.proc_times_batch, dim=2).div(feat_opes_batch[:, 1, :] + 1e-9)         # Operation Processing time (average version, for each operation until scheduled)
         feat_opes_batch[:, 3, :] = convert_feat_job_2_ope(self.nums_ope_batch, self.opes_appertain_batch)               # Number of unscheduled operations in the job
                                                                                                                         # that the operation belongs to (repeated usage)
         feat_opes_batch[:, 5, :] = torch.bmm(feat_opes_batch[:, 2, :].unsqueeze(1),                                     # ↑ (originally all unscheduled)
@@ -266,6 +266,8 @@ class FJSPEnv(gym.Env):
 
         self.ope_ma_adj_batch[self.batch_idxes, opes] = torch.zeros(size=(self.batch_size, self.num_mas), dtype=torch.int64).index_put_((self.batch_idxes, mas), torch.ones(len(self.batch_idxes), dtype=torch.int64))  # no broadcasting version
         # torch.Tensor.index_put(): out-place version; torch.Tensor.index_put_(): in-place version
+
+        all the updates are carried out over those active instances in the batch, i.e. unfinished ones, marked by `self.batch_idxes`
         '''
         opes = actions[0, :]            # the outer, or say, the flattened operation idx, not the intra-index of each job, shape: (batch_size,), a row vector
         mas = actions[1, :]             # the machine idx, shape: (batch_size,), a row vector
@@ -302,17 +304,18 @@ class FJSPEnv(gym.Env):
         start_ope = self.num_ope_biases_batch[self.batch_idxes, jobs]       # those starting operation idx of the jobs in those unfinished instances in the batch
         end_ope = self.end_ope_biases_batch[self.batch_idxes, jobs]         # those ending operation idx of the jobs in those unfinished instances in the batch
         for i in range(self.batch_idxes.size(0)):
-            self.feat_opes_batch[self.batch_idxes[i], 3, start_ope[i]:end_ope[i]+1] -= 1    # type: ignore
+            self.feat_opes_batch[self.batch_idxes[i], 3, start_ope[i]:end_ope[i]+1] -= 1    # type: ignore  # `3` for 'Number of unscheduled operations in the job'
 
         # Update 'Start time' and 'Job completion time'
-        self.feat_opes_batch[self.batch_idxes, 5, opes] = self.time[self.batch_idxes]
-        is_scheduled = self.feat_opes_batch[self.batch_idxes, 0, :]
-        mean_proc_time = self.feat_opes_batch[self.batch_idxes, 2, :]
-        start_times = self.feat_opes_batch[self.batch_idxes, 5, :] * is_scheduled  # real start time of scheduled opes
-        un_scheduled = 1 - is_scheduled  # unscheduled opes
+        self.feat_opes_batch[self.batch_idxes, 5, opes] = self.time[self.batch_idxes]       # '5' for 'Start time', using the current time of the instance in the environment
+        is_scheduled = self.feat_opes_batch[self.batch_idxes, 0, :]                         # '0' for 'Status', the `is_scheduled` is for the operation
+        mean_proc_time = self.feat_opes_batch[self.batch_idxes, 2, :]                       # '2' for 'Processing time', the `mean_proc_time` is for the operation (average over feasible machines)
+        start_times = self.feat_opes_batch[self.batch_idxes, 5, :] * is_scheduled           # real start time of scheduled opes
+        un_scheduled = 1 - is_scheduled                                                     # unscheduled opes, also okay to use the ~is_scheduled.bool()
         estimate_times = torch.bmm((start_times + mean_proc_time).unsqueeze(1),
-                            self.cal_cumul_adj_batch[self.batch_idxes, :, :]).squeeze()\
-                         * un_scheduled  # estimate start time of unscheduled opes
+                                    self.cal_cumul_adj_batch[self.batch_idxes, :, :]).squeeze()\
+                                    * un_scheduled                                                      # estimate start time of unscheduled opes
+        # ↑ https://pytorch.org/docs/stable/generated/torch.bmm.html, bmm for "batch matrix multiplication", out_i = mat1_i @ mat2_i
         self.feat_opes_batch[self.batch_idxes, 5, :] = start_times + estimate_times
         end_time_batch = (self.feat_opes_batch[self.batch_idxes, 5, :] +
                           self.feat_opes_batch[self.batch_idxes, 2, :]).gather(1, self.end_ope_biases_batch[self.batch_idxes, :])
