@@ -310,9 +310,9 @@ class FJSPEnv(gym.Env):
         self.feat_opes_batch[self.batch_idxes, 5, opes] = self.time[self.batch_idxes]       # '5' for 'Start time', using the current time of the instance in the environment
         is_scheduled = self.feat_opes_batch[self.batch_idxes, 0, :]                         # '0' for 'Status', the `is_scheduled` is for the operation
         mean_proc_time = self.feat_opes_batch[self.batch_idxes, 2, :]                       # '2' for 'Processing time', the `mean_proc_time` is for the operation (average over feasible machines)
-        start_times = self.feat_opes_batch[self.batch_idxes, 5, :] * is_scheduled           # real start time of scheduled opes
+        start_times = self.feat_opes_batch[self.batch_idxes, 5, :] * is_scheduled           # real start time of scheduled opes, shape: (len(self.batch_idxes), 1, self.num_opes)
         un_scheduled = 1 - is_scheduled                                                     # unscheduled opes, also okay to use the ~is_scheduled.bool()
-        estimate_times = torch.bmm((start_times + mean_proc_time).unsqueeze(1),
+        estimate_times = torch.bmm((start_times + mean_proc_time).unsqueeze(1),                         # need to check the `load_fjs()` for details
                                     self.cal_cumul_adj_batch[self.batch_idxes, :, :]).squeeze()\
                                     * un_scheduled                                                      # estimate start time of unscheduled opes
         # ↑ https://pytorch.org/docs/stable/generated/torch.bmm.html, bmm for "batch matrix multiplication", out_i = mat1_i @ mat2_i

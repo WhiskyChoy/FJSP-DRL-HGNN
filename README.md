@@ -29,7 +29,7 @@ Implementation of the IEEE TII paper [Flexible Job Shop Scheduling via Graph Neu
 * visdom $\ge$ 0.1.8.9
 * matplotlib $\ge$ 3.5.3
 
-Note that `pynvml` is used in `test.py` to avoid excessive memory usage of GPU. The code has been modified so that it doesn't call those `pynvml` relevant functions when using CPU. To use allow our program to automatically set up the `visdom` server and open the browser for you, remember to grant administrator or Internet access privilege to the python interpreter you use. You may use another console and run `python -m visdom.server` using the virtual environment you created to start the server manually, and hopefully later the Python interpreter will have the privilege to visit the Internet.
+Note that `pynvml` is used in `test.py` to avoid excessive memory usage of GPU. The code has been modified so that it doesn't call those `pynvml` relevant functions when using CPU. To allow our program to automatically set up the `visdom` server and open the browser for you, remember to grant administrator or Internet access privilege to the python interpreter you use. You may use another console and run `python -m visdom.server` using the virtual environment you created to start the server manually, and hopefully later the Python interpreter will have the privilege to visit the Internet.
 
 For compatibility concerns, we locked the version of the above packages with a suit of capable packages (some are of higher versions than the least requirement) in `requirements.yml` using `conda`. You can install them by running:
 
