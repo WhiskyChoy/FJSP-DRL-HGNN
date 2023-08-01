@@ -4,11 +4,18 @@ import numpy as np
 def load_fjs(lines, num_mas, num_opes):
     '''
     Load the local FJSP instance.
+
+    Note that it's a pretty general representation, as the processing order of operations
+    is actually represented as a graph, which is a DAG (directed acyclic graph).
+
+    For FJSP, it's a simplified version of the general DAG, where the graph contains block of chains.
+    (weakly connected components can be represent as multiple blocks in the matrix, while each job contains
+    sequential operations, so they'd be chains)
     '''
     flag = 0
-    matrix_proc_time = torch.zeros(size=(num_opes, num_mas))
-    matrix_pre_proc = torch.full(size=(num_opes, num_opes), dtype=torch.bool, fill_value=False)
-    matrix_cal_cumul = torch.zeros(size=(num_opes, num_opes)).int()
+    matrix_proc_time = torch.zeros(size=(num_opes, num_mas))                                        # processing time of each operation on each machine
+    matrix_pre_proc = torch.full(size=(num_opes, num_opes), dtype=torch.bool, fill_value=False)     # at most one predecessor, so at most one True in each row
+    matrix_cal_cumul = torch.zeros(size=(num_opes, num_opes)).int() # why cast it to int?
     nums_ope = []  # A list of the number of operations for each job
     opes_appertain = np.array([])
     num_ope_biases = []  # The id of the first operation of each job
@@ -52,6 +59,8 @@ def nums_detec(lines):
 def edge_detec(line, num_ope_bias, matrix_proc_time, matrix_pre_proc, matrix_cal_cumul):
     '''
     Detect information of a job
+
+    Note that it'd do some in-place modification on the matrices to inject the information.
     '''
     line_split = line.split()
     flag = 0
