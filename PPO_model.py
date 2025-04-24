@@ -412,18 +412,18 @@ class PPO:
         minibatch_size: int = train_paras["minibatch_size"]                 # batch size for updating
 
         # Flatten the data in memory (in the dim of parallel instances and decision points)
-        old_ope_ma_adj = torch.stack(memory.ope_ma_adj, dim=0).transpose(0,1).flatten(0,1)
-        old_ope_pre_adj = torch.stack(memory.ope_pre_adj, dim=0).transpose(0, 1).flatten(0, 1)
-        old_ope_sub_adj = torch.stack(memory.ope_sub_adj, dim=0).transpose(0, 1).flatten(0, 1)
-        old_raw_opes = torch.stack(memory.raw_opes, dim=0).transpose(0, 1).flatten(0, 1)
-        old_raw_mas = torch.stack(memory.raw_mas, dim=0).transpose(0, 1).flatten(0, 1)
-        old_proc_time = torch.stack(memory.proc_time, dim=0).transpose(0, 1).flatten(0, 1)
-        old_jobs_gather = torch.stack(memory.jobs_gather, dim=0).transpose(0, 1).flatten(0, 1)
-        old_eligible = torch.stack(memory.eligible, dim=0).transpose(0, 1).flatten(0, 1)
-        memory_rewards = torch.stack(memory.rewards, dim=0).transpose(0,1)
-        memory_is_terminals = torch.stack(memory.is_terminals, dim=0).transpose(0,1)
-        old_logprobs = torch.stack(memory.logprobs, dim=0).transpose(0,1).flatten(0,1)
-        old_action_envs = torch.stack(memory.action_indexes, dim=0).transpose(0,1).flatten(0, 1)
+        old_ope_ma_adj: torch.Tensor = torch.stack(memory.ope_ma_adj, dim=0).transpose(0,1).flatten(0,1)
+        old_ope_pre_adj: torch.Tensor = torch.stack(memory.ope_pre_adj, dim=0).transpose(0, 1).flatten(0, 1)
+        old_ope_sub_adj: torch.Tensor = torch.stack(memory.ope_sub_adj, dim=0).transpose(0, 1).flatten(0, 1)
+        old_raw_opes: torch.Tensor = torch.stack(memory.raw_opes, dim=0).transpose(0, 1).flatten(0, 1)
+        old_raw_mas: torch.Tensor = torch.stack(memory.raw_mas, dim=0).transpose(0, 1).flatten(0, 1)
+        old_proc_time: torch.Tensor = torch.stack(memory.proc_time, dim=0).transpose(0, 1).flatten(0, 1)
+        old_jobs_gather: torch.Tensor = torch.stack(memory.jobs_gather, dim=0).transpose(0, 1).flatten(0, 1)
+        old_eligible: torch.Tensor = torch.stack(memory.eligible, dim=0).transpose(0, 1).flatten(0, 1)
+        memory_rewards: torch.Tensor = torch.stack(memory.rewards, dim=0).transpose(0,1)
+        memory_is_terminals: torch.Tensor = torch.stack(memory.is_terminals, dim=0).transpose(0,1)
+        old_logprobs: torch.Tensor = torch.stack(memory.logprobs, dim=0).transpose(0,1).flatten(0,1)
+        old_action_envs: torch.Tensor = torch.stack(memory.action_indexes, dim=0).transpose(0,1).flatten(0, 1)
 
         # Estimate and normalize the rewards
         rewards_envs = []
