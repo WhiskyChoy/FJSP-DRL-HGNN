@@ -5,14 +5,14 @@
 Implementation of the IEEE TII paper [Flexible Job Shop Scheduling via Graph Neural Network and Deep Reinforcement Learning](https://ieeexplore.ieee.org/document/9826438). *IEEE Transactions on Industrial Informatics*, 2022.
 
 ```bibTeX
-@ARTICLE{9826438,  
+@ARTICLE{song2023flexible9826438,  
    author={Song, Wen and Chen, Xinyang and Li, Qiqiang and Cao, Zhiguang},  
    journal={IEEE Transactions on Industrial Informatics},   
    title={Flexible Job Shop Scheduling via Graph Neural Network and Deep Reinforcement Learning},   
    year={2023},  
    volume={19},  
    number={2},  
-   pages={1600-1610},  
+   pages={1600--1610},  
    doi={10.1109/TII.2022.3189725}
  }
 ```
