@@ -67,8 +67,8 @@ def main():
 
     data_path = "./data_test/{0}/".format(test_paras["data_path"])
     test_files = os.listdir(data_path)
-    test_files.sort(key=lambda x: x[:-4])
-    test_files = test_files[:num_ins]
+    test_files.sort(key=lambda x: x[:-4])       # sort by file name (without the last 4 characters, i.e. the .fjs extension suffix)
+    test_files = test_files[:num_ins]           # fetch the first `num_ins` files (if not enough provided, all files will be used)
     mod_files = os.listdir('./model/')[:]
 
     memories = PPO_model.Memory()
@@ -77,11 +77,13 @@ def main():
     envs: List[FJSPEnv] = []  # Store multiple environments
 
     # Detect and add models to "rules"
+    # ↓ originally rules contains some notification strings like "DRL"
     if "DRL" in rules:      # auto add all models
-        for root, ds, fs in os.walk('./model/'):
+        for root, _, fs in os.walk('./model/'):            # root, ds, fs
             for f in fs:
                 if f.endswith('.pt'):
                     rules.append(f)
+    # ↓ then, the notification strings are removed
     if len(rules) != 1:
         if "DRL" in rules:
             rules.remove("DRL")
@@ -90,21 +92,23 @@ def main():
     str_time = time.strftime("%Y%m%d_%H%M%S", time.localtime(time.time()))
     save_path = './save/test_{0}'.format(str_time)
     os.makedirs(save_path)
-    writer = pd.ExcelWriter(
-        '{0}/makespan_{1}.xlsx'.format(save_path, str_time))  # Makespan data storage path
-    writer_time = pd.ExcelWriter('{0}/time_{1}.xlsx'.format(save_path, str_time))  # time data storage path
+    makespan_excel_path = '{0}/makespan_{1}.xlsx'.format(save_path, str_time)
+    time_excel_path = '{0}/time_{1}.xlsx'.format(save_path, str_time)
+    writer = pd.ExcelWriter(makespan_excel_path)   # Makespan data storage path
+    writer_time = pd.ExcelWriter(time_excel_path)  # time data storage path
     file_name = [test_files[i] for i in range(num_ins)]
     data_file = pd.DataFrame(file_name, columns=["file_name"])
-    data_file.to_excel(writer, sheet_name='Sheet1', index=False)
+    data_file.to_excel(writer, sheet_name='Sheet1', index=False)            # write the filename column
     # writer.save()
     writer.close()          # the `close()` is actually synonym for `save()`, to make it more file-like
-    data_file.to_excel(writer_time, sheet_name='Sheet1', index=False)
+    data_file.to_excel(writer_time, sheet_name='Sheet1', index=False)       # write the filename column
     # writer_time.save()
     writer_time.close()     # the `close()` is actually synonym for `save()`, to make it more file-like
 
     # Rule-by-rule (model-by-model) testing
     start = time.time()
     for i_rules in range(len(rules)):
+        print(f'>>> Rules No. {i_rules + 1} (starting from 1)')
         rule = rules[i_rules]
         # Load trained model
         if rule.endswith('.pt'):
@@ -152,6 +156,7 @@ def main():
             # Schedule an instance/environment
             # DRL-S
             if test_paras["sample"]:
+                print("use sampling strategy for env[{0}]".format(i_ins))
                 # env.reset()
                 # The author already reset the environment in the `__init__` function; however, in latest version of gym,
                 # the `reset` function is forced to be called after the environment is created
@@ -160,6 +165,7 @@ def main():
                 times.append(time_re)
             # DRL-G
             else:
+                print("using greedy strategy for env[{0}]".format(i_ins))
                 time_s = []
                 makespan_s = []  # In fact, the results obtained by DRL-G do not change
                 # env.reset()
@@ -184,6 +190,9 @@ def main():
         data.to_excel(writer_time, sheet_name='Sheet1', index=False, startcol=i_rules + 1)
         # writer_time.save()        # the `close()` is actually synonym for `save()`, to make it more file-like
         writer_time.close()
+
+        print(f'makespan results written at {makespan_excel_path}')
+        print(f'time results written at {time_excel_path}')
 
         for env in envs:
             env.reset()

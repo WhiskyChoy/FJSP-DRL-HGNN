@@ -98,7 +98,7 @@ class CaseGenerator:
                     break
         lines.append('\n')
         if self.flag_doc:
-            doc = open(self.path + '{0}j_{1}m_{2}.fjs'.format(self.num_jobs, self.num_mas, str.zfill(str(idx+1),3)),'a')
+            doc = open(self.path + '{0}j_{1}m_{2}.fjs'.format(self.num_jobs, self.num_mas, str.zfill(str(idx+1),3)),'a')        # 三位数的尾缀, 如001, 002, 003
             for i in range(len(lines_doc)):
                 print(lines_doc[i], file=doc)
             doc.close()
